@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<AssemblyName>Cirreum.Introspection</AssemblyName>
+		<RootNamespace>Cirreum.Introspection</RootNamespace>
+		<Description>Domain introspection for Cirreum applications: reflection-derived model, analyzers, and authorization configuration validation. Opt-in package; consumers compose startup or admin policy themselves.</Description>
+		<PackageTags>cirreum;introspection;authorization;analysis;documentation</PackageTags>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Cirreum.Core" Version="4.0.1" />
+	</ItemGroup>
+
+</Project>
