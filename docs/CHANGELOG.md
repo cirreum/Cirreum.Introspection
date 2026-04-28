@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-04-28
+
 ### Fixed
 
 - **Publish workflow filename typo.** `.github/workflows/publish.yml` referenced
