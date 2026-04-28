@@ -1,6 +1,6 @@
-using System.Text.Json.Serialization;
-
 namespace Cirreum.Introspection;
+
+using System.Text.Json.Serialization;
 
 /// <summary>
 /// Represents a complete analysis report containing issues, metrics, and analyzed categories.

@@ -104,6 +104,7 @@ public record DomainSnapshot {
 		AnalysisOptions? options = null) {
 
 		var domainModel = serviceProvider.GetRequiredService<IDomainModel>();
+		var domainEnvironment = serviceProvider.GetRequiredService<IDomainEnvironment>();
 
 		var analysisOptions = options ?? new AnalysisOptions {
 			MaxHierarchyDepth = 10,
@@ -118,7 +119,7 @@ public record DomainSnapshot {
 		var grantDomains = BuildGrantDomains(catalog);
 
 		return new DomainSnapshot {
-			Runtime = DomainContext.RuntimeType,
+			Runtime = domainEnvironment.RuntimeType,
 			CapturedAtUtc = DateTime.UtcNow,
 			Catalog = catalog,
 			AnalysisReport = analysisReport,

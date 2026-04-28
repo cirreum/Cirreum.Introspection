@@ -6,24 +6,21 @@ using Cirreum.Introspection.Documentation.Formatters;
 using Cirreum.Introspection.Modeling;
 using System.Text;
 
-public class DomainDocumenter : IDomainDocumenter {
-
-	private readonly IAuthorizationRoleRegistry _roleRegistry;
-	private readonly IDomainModel _domainModel;
-
-	public DomainDocumenter(IAuthorizationRoleRegistry roleRegistry, IDomainModel domainModel) {
-		this._roleRegistry = roleRegistry;
-		this._domainModel = domainModel;
-	}
+public class DomainDocumenter(
+	IAuthorizationRoleRegistry roleRegistry,
+	IDomainModel domainModel,
+	IDomainEnvironment domainEnvironment
+) : IDomainDocumenter {
 
 	public string GenerateMarkdown(IServiceProvider? services = null) {
+
 		var sb = new StringBuilder();
-		var combinedInfo = this._domainModel.GetAllRules();
+		var combinedInfo = domainModel.GetAllRules();
 
 		sb.AppendLine("# Authorization System Documentation");
 		sb.AppendLine();
 		sb.AppendLine($"**Generated**: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC");
-		sb.AppendLine($"**Runtime**: {DomainContext.RuntimeType}");
+		sb.AppendLine($"**Runtime**: {domainEnvironment.RuntimeType}");
 		sb.AppendLine();
 
 		// Executive Summary
@@ -62,7 +59,7 @@ public class DomainDocumenter : IDomainDocumenter {
 		sb.AppendLine();
 
 		// Get domain data from the unified provider
-		var catalog = this._domainModel.GetCatalog();
+		var catalog = domainModel.GetCatalog();
 
 		// Extract metrics
 		var totalResources = catalog.Metrics.TotalResources;
@@ -85,7 +82,7 @@ public class DomainDocumenter : IDomainDocumenter {
 		sb.AppendLine("## Role Hierarchy");
 		sb.AppendLine();
 		sb.AppendLine("```text");
-		sb.AppendLine(RoleHierarchyRenderer.ToTextTree(this._roleRegistry));
+		sb.AppendLine(RoleHierarchyRenderer.ToTextTree(roleRegistry));
 		sb.AppendLine("```");
 		sb.AppendLine();
 
@@ -100,12 +97,12 @@ public class DomainDocumenter : IDomainDocumenter {
 
 	public string GenerateCsv(IServiceProvider? services = null) {
 		var sb = new StringBuilder();
-		var combinedInfo = this._domainModel.GetAllRules();
-		var allRoles = this._roleRegistry.GetRegisteredRoles();
+		var combinedInfo = domainModel.GetAllRules();
+		var allRoles = roleRegistry.GetRegisteredRoles();
 
 		sb.AppendLine("AUTHORIZATION SYSTEM EXPORT");
 		sb.AppendLine($"Generated: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC");
-		sb.AppendLine($"Runtime: {DomainContext.RuntimeType}");
+		sb.AppendLine($"Runtime: {domainEnvironment.RuntimeType}");
 		sb.AppendLine($"Total Authorization Rules: {combinedInfo.TotalRules}");
 		sb.AppendLine();
 
@@ -136,7 +133,7 @@ public class DomainDocumenter : IDomainDocumenter {
 
 		var processedRoles = new HashSet<string>();
 		foreach (var role in allRoles) {
-			var childRoles = this._roleRegistry.GetInheritedRoles(role);
+			var childRoles = roleRegistry.GetInheritedRoles(role);
 			foreach (var childRole in childRoles) {
 				// Calculate an approximate inheritance depth for visualization tools
 				var inheritanceDepth = 1; // Default to direct inheritance
@@ -167,7 +164,7 @@ public class DomainDocumenter : IDomainDocumenter {
 		sb.AppendLine();
 
 		// SECTION 2: Authorization rules with improved structure for visualization
-		var rules = this._domainModel.GetAuthorizationRules();
+		var rules = domainModel.GetAuthorizationRules();
 		sb.AppendLine("## AUTHORIZATION RULES");
 		sb.AppendLine("Section,ResourceName,ValidatorName,PropertyPath,ValidationType,Message,Condition,IncludesRBAC,SortOrder");
 
@@ -330,16 +327,16 @@ public class DomainDocumenter : IDomainDocumenter {
 		sb.AppendLine("<body>");
 
 		sb.AppendLine("<h1>Authorization System Documentation</h1>");
-		sb.AppendLine($"<p class=\"generated-timestamp\"><strong>Generated:</strong> {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC | <strong>Runtime:</strong> {DomainContext.RuntimeType}</p>");
+		sb.AppendLine($"<p class=\"generated-timestamp\"><strong>Generated:</strong> {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC | <strong>Runtime:</strong> {domainEnvironment.RuntimeType}</p>");
 
 		// Get data for statistics
-		var combinedInfo = this._domainModel.GetAllRules();
-		var allRoles = this._roleRegistry.GetRegisteredRoles();
+		var combinedInfo = domainModel.GetAllRules();
+		var allRoles = roleRegistry.GetRegisteredRoles();
 
 		// Add executive summary with statistics
 		sb.AppendLine("<div class=\"stats-grid\">");
 		sb.AppendLine("  <div class=\"stat-card\">");
-		sb.AppendLine($"    <div class=\"stat-number\" style=\"font-size: 1.2em; color: #6c757d;\">{DomainContext.RuntimeType}</div>");
+		sb.AppendLine($"    <div class=\"stat-number\" style=\"font-size: 1.2em; color: #6c757d;\">{domainEnvironment.RuntimeType}</div>");
 		sb.AppendLine("    <div class=\"stat-label\">Runtime</div>");
 		sb.AppendLine("  </div>");
 		sb.AppendLine("  <div class=\"stat-card\">");
@@ -397,7 +394,7 @@ public class DomainDocumenter : IDomainDocumenter {
 		sb.AppendLine("  <p>Complete view of all domain resources (IDomainObject) across your domain, including both protected and anonymous resources.</p>");
 
 		// Get domain data from the unified provider
-		var htmlCatalog = this._domainModel.GetCatalog();
+		var htmlCatalog = domainModel.GetCatalog();
 
 		// Extract overall metrics
 		var totalDomainResources = htmlCatalog.Metrics.TotalResources;
@@ -561,14 +558,14 @@ public class DomainDocumenter : IDomainDocumenter {
 			sb.AppendLine($"  <div class=\"role {roleClass}\">");
 			sb.AppendLine($"    <h4>{role}</h4>");
 
-			var childRoles = this._roleRegistry.GetInheritedRoles(role);
+			var childRoles = roleRegistry.GetInheritedRoles(role);
 			if (childRoles.Count > 0) {
 				sb.AppendLine("    <div class=\"inheritance\">");
 				sb.AppendLine("      <strong>Inherits from:</strong> " + string.Join(", ", childRoles));
 				sb.AppendLine("    </div>");
 			}
 
-			var parentRoles = this._roleRegistry.GetInheritingRoles(role);
+			var parentRoles = roleRegistry.GetInheritingRoles(role);
 			if (parentRoles.Count > 0) {
 				sb.AppendLine("    <div class=\"inheritance\">");
 				sb.AppendLine("      <strong>Inherited by:</strong> " + string.Join(", ", parentRoles));
@@ -581,7 +578,7 @@ public class DomainDocumenter : IDomainDocumenter {
 		sb.AppendLine("  <h3>Role Hierarchy Diagram</h3>");
 		sb.AppendLine("  <div class=\"diagram\">");
 		sb.AppendLine("    <div class=\"mermaid\">");
-		sb.Append(RoleHierarchyRenderer.ToMermaidDiagram(this._roleRegistry));
+		sb.Append(RoleHierarchyRenderer.ToMermaidDiagram(roleRegistry));
 		sb.AppendLine("    </div>");
 		sb.AppendLine("  </div>");
 		sb.AppendLine("</div>");
@@ -825,7 +822,7 @@ public class DomainDocumenter : IDomainDocumenter {
 	}
 
 	private AnalysisReport GetAnalysisReport(IServiceProvider services) {
-		var analyzer = DomainAnalyzerProvider.CreateAnalyzer(this._roleRegistry, this._domainModel, services);
+		var analyzer = DomainAnalyzerProvider.CreateAnalyzer(roleRegistry, domainModel, services);
 		return analyzer.AnalyzeAll();
 	}
 

@@ -42,12 +42,12 @@ public sealed class DomainModel : IDomainModel {
 	private IReadOnlySet<Type>? _typesWithAccessEntryProvider;
 	private bool? _evaluatorRegistered;
 	private bool? _grantProviderRegistered;
-	private readonly object _initLock = new();
+	private readonly Lock _initLock = new();
 
 	public DomainModel(IServiceScopeFactory scopeFactory) {
 		this._scopeFactory = scopeFactory;
 		this._catalog = new Lazy<DomainCatalog>(
-			() => DomainCatalog.Build(this._resources.Value.Select(r => r.ToResourceInfo()).ToList()),
+			() => DomainCatalog.Build([.. this._resources.Value.Select(r => r.ToResourceInfo())]),
 			isThreadSafe: true);
 	}
 
@@ -181,8 +181,8 @@ public sealed class DomainModel : IDomainModel {
 
 	#region Build (reflection-derived)
 
-	private static IReadOnlyList<ResourceTypeInfo> BuildResources() {
-		var assemblies = AssemblyScanner.ScanAssemblies();
+	private static ReadOnlyCollection<ResourceTypeInfo> BuildResources() {
+		var assemblies = Cirreum.AssemblyScanner.ScanAssemblies();
 		var allTypes = assemblies
 			.SelectMany(a => {
 				try { return a.GetTypes(); } catch { return Type.EmptyTypes; }
@@ -209,7 +209,7 @@ public sealed class DomainModel : IDomainModel {
 			var isCacheableQuery = IsCacheableQuery(resourceType);
 			var requiresAuthorization = !isAnonymous && ImplementsAuthorizableOperation(resourceType);
 
-			var grantDomain = RequiredGrantCache.ResolveDomainFeature(resourceType);
+			var grantDomain = DomainFeatureResolver.Resolve(resourceType);
 			var permissions = RequiredGrantCache.GetFor(resourceType);
 			var isSelfScoped = typeof(IGrantableSelfBase).IsAssignableFrom(resourceType);
 			var isGranted = isSelfScoped
@@ -244,8 +244,8 @@ public sealed class DomainModel : IDomainModel {
 		return resources.AsReadOnly();
 	}
 
-	private static IReadOnlyList<AuthorizationRuleTypeInfo> BuildRules() {
-		var assemblies = AssemblyScanner.ScanAssemblies();
+	private static ReadOnlyCollection<AuthorizationRuleTypeInfo> BuildRules() {
+		var assemblies = Cirreum.AssemblyScanner.ScanAssemblies();
 		var allTypes = assemblies
 			.SelectMany(a => {
 				try { return a.GetTypes(); } catch { return Type.EmptyTypes; }
@@ -264,9 +264,9 @@ public sealed class DomainModel : IDomainModel {
 		return rules.ToList().AsReadOnly();
 	}
 
-	private static IReadOnlyList<Type> DiscoverProtectedResourceTypes() {
+	private static ReadOnlyCollection<Type> DiscoverProtectedResourceTypes() {
 		var types = new List<Type>();
-		foreach (var assembly in AssemblyScanner.ScanAssemblies()) {
+		foreach (var assembly in Cirreum.AssemblyScanner.ScanAssemblies()) {
 			Type[] assemblyTypes;
 			try { assemblyTypes = assembly.GetTypes(); } catch { continue; }
 			foreach (var type in assemblyTypes) {
