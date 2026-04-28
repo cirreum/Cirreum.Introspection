@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Publish workflow filename typo.** `.github/workflows/publish.yml` referenced
+  `Cirreum.Cirreum.Introspection.slnx` (doubled prefix) instead of
+  `Cirreum.Introspection.slnx`, causing the v1.0.0 GitHub Action to fail at
+  the `dotnet restore` step and never publish the package to NuGet. No 1.0.0
+  artifact was uploaded; 1.0.1 is the first published release.
+
 ## [1.0.0] - 2026-04-28
 
 Initial release. Extraction of the introspection subsystem from `Cirreum.Core`
