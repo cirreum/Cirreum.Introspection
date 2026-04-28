@@ -45,14 +45,30 @@ var report = app.Services.AnalyzeAuthorization();
 
 #### Startup validation (consumer-authored)
 
-The library deliberately ships no `IAutoInitialize` / `IStartupTask`. If every consumer that referenced the package got auto-validation, that would be the wrong default. Compose your own policy:
+The library deliberately ships no `ISystemInitializer` / `IAutoInitialize` / `IStartupTask`. If every consumer that referenced the package got auto-validation, that would be the wrong default. Compose your own policy:
+
+#### ISystemInitializer
 
 ```csharp
-internal sealed class ValidateAuthOnStart(IServiceProvider sp) : IAutoInitialize {
-    public ValueTask InitializeAsync() {
-        sp.ValidateAuthorizationConfiguration();
-        return ValueTask.CompletedTask;
-    }
+internal sealed class ValidateAuthOnStart : ISystemInitializer {
+	public ValueTask RunAsync(IServiceProvider serviceProvider) {
+		sp.ValidateAuthorizationConfiguration();
+		return ValueTask.CompletedTask;
+	}
+}
+```
+
+#### IStartupTask
+
+```csharp
+internal sealed class ValidateAuthOnStart(
+	IServiceProvider serviceProvider
+) : IStartupTask {
+	public int Order { get; } = 100;
+	public ValueTask ExecuteAsync() {
+		sp.ValidateAuthorizationConfiguration();
+		return ValueTask.CompletedTask;
+	}
 }
 ```
 
@@ -60,7 +76,7 @@ internal sealed class ValidateAuthOnStart(IServiceProvider sp) : IAutoInitialize
 
 ```csharp
 app.MapGet("/admin/authz/report", (IServiceProvider sp) =>
-    sp.AnalyzeAuthorization()).RequireAuthorization("Admin");
+	sp.AnalyzeAuthorization()).RequireAuthorization("Admin");
 ```
 
 #### Integration test
@@ -68,9 +84,9 @@ app.MapGet("/admin/authz/report", (IServiceProvider sp) =>
 ```csharp
 [Fact]
 public void Authorization_Configuration_Has_No_Errors() {
-    using var host = TestHost.Build();
-    Action act = () => host.Services.ValidateAuthorizationConfiguration();
-    act.Should().NotThrow();
+	using var host = TestHost.Build();
+	Action act = () => host.Services.ValidateAuthorizationConfiguration();
+	act.Should().NotThrow();
 }
 ```
 

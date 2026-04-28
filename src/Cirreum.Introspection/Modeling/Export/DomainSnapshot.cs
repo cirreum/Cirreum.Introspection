@@ -103,15 +103,23 @@ public record DomainSnapshot {
 		IServiceProvider serviceProvider,
 		AnalysisOptions? options = null) {
 
-		var domainModel = serviceProvider.GetRequiredService<IDomainModel>();
-		var domainEnvironment = serviceProvider.GetRequiredService<IDomainEnvironment>();
+		ArgumentNullException.ThrowIfNull(serviceProvider);
+
+		// Open a defensive scope so any scoped service in the introspection graph
+		// resolves correctly under .NET's default scope-validation mode. The
+		// scope is consumed eagerly; nothing in the returned snapshot retains it.
+		using var scope = serviceProvider.CreateScope();
+		var sp = scope.ServiceProvider;
+
+		var domainModel = sp.GetRequiredService<IDomainModel>();
+		var domainEnvironment = sp.GetRequiredService<IDomainEnvironment>();
 
 		var analysisOptions = options ?? new AnalysisOptions {
 			MaxHierarchyDepth = 10,
 			ExcludedCategories = []
 		};
 
-		var analyzer = DomainAnalyzerProvider.CreateAnalyzer(roleRegistry, domainModel, serviceProvider, analysisOptions);
+		var analyzer = DomainAnalyzerProvider.CreateAnalyzer(roleRegistry, domainModel, sp, analysisOptions);
 		var analysisReport = analyzer.AnalyzeAll();
 
 		var roleHierarchy = BuildRoleHierarchy(roleRegistry);
