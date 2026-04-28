@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-04-28
+
 Initial release. Extraction of the introspection subsystem from `Cirreum.Core`
 into a dedicated, opt-in package. Architectural cleanup baked in: no type retains
 `IServiceProvider`, eliminating the captured-scope failure mode that affected
