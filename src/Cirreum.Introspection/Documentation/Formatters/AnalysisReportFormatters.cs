@@ -111,8 +111,8 @@ public static class AnalysisReportFormatters {
 		sb.AppendLine();
 		sb.AppendLine("| OTel Activity Tag | Surfaces |");
 		sb.AppendLine("|-------------------|----------|");
-		sb.AppendLine("| `cirreum.authz.decision` | Per-stage pass/deny telemetry across the three-stage pipeline |");
-		sb.AppendLine("| `cirreum.authz.grant.owner_auto_stamped` | Stage 1 inferred OwnerId from a single-owner grant rather than the caller supplying it |");
+		sb.AppendLine("| `cirreum.authz.decision` | Per-phase pass/deny telemetry across the three-phase pipeline |");
+		sb.AppendLine("| `cirreum.authz.grant.owner_auto_stamped` | Phase 1 inferred OwnerId from a single-owner grant rather than the caller supplying it |");
 		sb.AppendLine("| `cirreum.authz.grant.pattern_c_bypass` | A Pattern C lookup completed without the handler reading `IOperationGrantAccessor.Current` — possible bypass |");
 		sb.AppendLine();
 		sb.AppendLine("For the framework's compliance model (NIST SP 800-53 AC-3 / AC-6 / AU-2, NIST SP 800-162 ABAC, OWASP ASVS V4, OWASP Top 10 #1, ISO/IEC 27001 A.9.4.1), see the **Compliance Boundary** section in `Authorization/README.md`.");
@@ -163,7 +163,7 @@ public static class AnalysisReportFormatters {
 		sb.AppendLine("----------------------------");
 		sb.AppendLine("This report covers the static authorization graph. For runtime posture,");
 		sb.AppendLine("observe these OTel activity tags on every operation:");
-		sb.AppendLine("  - cirreum.authz.decision                     Per-stage pass/deny telemetry");
+		sb.AppendLine("  - cirreum.authz.decision                     Per-phase pass/deny telemetry");
 		sb.AppendLine("  - cirreum.authz.grant.owner_auto_stamped     Framework auto-inferred OwnerId");
 		sb.AppendLine("  - cirreum.authz.grant.pattern_c_bypass       Pattern C bypass detected at runtime");
 		sb.AppendLine();
@@ -328,8 +328,8 @@ public static class AnalysisReportFormatters {
 		sb.AppendLine("<table>");
 		sb.AppendLine("  <thead><tr><th>OTel Activity Tag</th><th>Surfaces</th></tr></thead>");
 		sb.AppendLine("  <tbody>");
-		sb.AppendLine("    <tr><td><code>cirreum.authz.decision</code></td><td>Per-stage pass/deny telemetry across the three-stage pipeline</td></tr>");
-		sb.AppendLine("    <tr><td><code>cirreum.authz.grant.owner_auto_stamped</code></td><td>Stage 1 inferred OwnerId from a single-owner grant rather than the caller supplying it</td></tr>");
+		sb.AppendLine("    <tr><td><code>cirreum.authz.decision</code></td><td>Per-phase pass/deny telemetry across the three-phase pipeline</td></tr>");
+		sb.AppendLine("    <tr><td><code>cirreum.authz.grant.owner_auto_stamped</code></td><td>Phase 1 inferred OwnerId from a single-owner grant rather than the caller supplying it</td></tr>");
 		sb.AppendLine("    <tr><td><code>cirreum.authz.grant.pattern_c_bypass</code></td><td>A Pattern C lookup completed without the handler reading <code>IOperationGrantAccessor.Current</code> &mdash; possible bypass</td></tr>");
 		sb.AppendLine("  </tbody>");
 		sb.AppendLine("</table>");

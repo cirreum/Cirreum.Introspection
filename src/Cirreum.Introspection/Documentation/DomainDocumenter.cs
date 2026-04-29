@@ -4,15 +4,37 @@ using Cirreum.Authorization;
 using Cirreum.Introspection;
 using Cirreum.Introspection.Documentation.Formatters;
 using Cirreum.Introspection.Modeling;
+using Microsoft.Extensions.DependencyInjection;
 using System.Text;
 
+/// <summary>
+/// Default <see cref="IDomainDocumenter"/> implementation.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Holds an <see cref="IServiceScopeFactory"/> (singleton-safe) and opens a
+/// transient scope per-render-call to resolve <see cref="IAuthorizationRoleRegistry"/>
+/// and to drive the analyzer pipeline. The registry is resolved lazily at render
+/// time rather than at construction so the documenter is robust to startup order:
+/// the registry's <c>IAutoInitialize</c> pass is guaranteed to have completed by
+/// the time any render call returns content.
+/// </para>
+/// <para>
+/// No <see cref="IServiceProvider"/> is retained; the per-call scope is disposed
+/// before the method returns.
+/// </para>
+/// </remarks>
 public class DomainDocumenter(
-	IAuthorizationRoleRegistry roleRegistry,
 	IDomainModel domainModel,
-	IDomainEnvironment domainEnvironment
+	IDomainEnvironment domainEnvironment,
+	IServiceScopeFactory scopeFactory
 ) : IDomainDocumenter {
 
-	public string GenerateMarkdown(IServiceProvider? services = null) {
+	public string GenerateMarkdown() {
+
+		using var scope = scopeFactory.CreateScope();
+		var sp = scope.ServiceProvider;
+		var roleRegistry = sp.GetRequiredService<IAuthorizationRoleRegistry>();
 
 		var sb = new StringBuilder();
 		var combinedInfo = domainModel.GetAllRules();
@@ -27,15 +49,15 @@ public class DomainDocumenter(
 		sb.AppendLine("## Executive Summary");
 		sb.AppendLine();
 		sb.AppendLine($"- **Total Authorization Rules**: {combinedInfo.TotalRules}");
-		sb.AppendLine($"- **Resource Rules**: {combinedInfo.ResourceRules.Count}");
+		sb.AppendLine($"- **Operation Rules**: {combinedInfo.OperationRules.Count}");
 		sb.AppendLine($"- **Policy Rules**: {combinedInfo.PolicyRules.Count}");
-		sb.AppendLine($"- **Protected Resource Types**: {combinedInfo.ResourceRules.Select(r => r.ResourceType).Distinct().Count()}");
+		sb.AppendLine($"- **Protected Operation Types**: {combinedInfo.OperationRules.Select(r => r.OperationType).Distinct().Count()}");
 		sb.AppendLine();
 
 		// Policy Validators Section
 		sb.AppendLine("## Policy Validators");
 		sb.AppendLine();
-		sb.AppendLine("Global and attribute-based policies that apply across multiple resources:");
+		sb.AppendLine("Global and attribute-based policies that apply across multiple operations:");
 		sb.AppendLine();
 
 		if (combinedInfo.PolicyRules.Any()) {
@@ -62,21 +84,70 @@ public class DomainDocumenter(
 		var catalog = domainModel.GetCatalog();
 
 		// Extract metrics
-		var totalResources = catalog.Metrics.TotalResources;
-		var protectedResources = catalog.Metrics.ProtectedResources;
-		var anonymousResources = catalog.Metrics.AnonymousResources;
+		var totalOperations = catalog.Metrics.TotalOperations;
+		var protectedOperations = catalog.Metrics.ProtectedOperations;
+		var anonymousOperations = catalog.Metrics.AnonymousOperations;
 		var coveragePercentage = catalog.Metrics.OverallCoveragePercentage;
 		var domainBoundaries = catalog.Metrics.TotalDomains;
 
 		sb.AppendLine("### Domain Summary");
 		sb.AppendLine();
 		sb.AppendLine($"- **Domain Boundaries**: {domainBoundaries}");
-		sb.AppendLine($"- **Total Resources**: {totalResources}");
-		sb.AppendLine($"- **Protected Resources**: {protectedResources} ({coveragePercentage}%)");
-		sb.AppendLine($"- **Anonymous Resources**: {anonymousResources}");
+		sb.AppendLine($"- **Total Operations**: {totalOperations}");
+		sb.AppendLine($"- **Protected Operations**: {protectedOperations} ({coveragePercentage}%)");
+		sb.AppendLine($"- **Anonymous Operations**: {anonymousOperations}");
 		sb.AppendLine();
 
 		// Domain details are available in the Domain Architecture tab and analysis results
+
+		// Authorization Constraints (Phase 1, Step 2)
+		sb.AppendLine("## Authorization Constraints");
+		sb.AppendLine();
+		sb.AppendLine("`IAuthorizationConstraint` implementations run as Phase 1, Step 2 of the authorization pipeline, in registration order, after grant evaluation and before any operation authorizer or policy. Each can short-circuit the pipeline.");
+		sb.AppendLine();
+		var constraintTypes = domainModel.GetAuthorizationConstraintTypes();
+		if (constraintTypes.Count == 0) {
+			sb.AppendLine("_No constraints registered._");
+		} else {
+			sb.AppendLine("| Order | Type | Namespace |");
+			sb.AppendLine("|------:|------|-----------|");
+			var idx = 1;
+			foreach (var ct in constraintTypes) {
+				sb.AppendLine($"| {idx} | `{ct.Name}` | `{ct.Namespace ?? "-"}` |");
+				idx++;
+			}
+		}
+		sb.AppendLine();
+
+		// Grants (Phase 1, Step 1)
+		sb.AppendLine("## Grants");
+		sb.AppendLine();
+		var grantedOperations = domainModel.GetAllOperations().Where(o => o.IsGranted).ToList();
+		if (grantedOperations.Count == 0) {
+			sb.AppendLine("_No granted operations registered._");
+		} else {
+			sb.AppendLine($"- **Granted operations:** {grantedOperations.Count}");
+			sb.AppendLine($"- **`IOperationGrantProvider` registered:** {(domainModel.IsOperationGrantProviderRegistered ? "yes" : "**no — grant evaluation cannot run**")}");
+			sb.AppendLine();
+
+			var byDomain = grantedOperations
+				.GroupBy(o => o.GrantDomain ?? "(no domain)", StringComparer.OrdinalIgnoreCase)
+				.OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase);
+			foreach (var dg in byDomain) {
+				sb.AppendLine($"### Domain: `{dg.Key}` ({dg.Count()})");
+				sb.AppendLine();
+				sb.AppendLine("| Operation | Kind | Permissions | Authorizer |");
+				sb.AppendLine("|-----------|------|-------------|------------|");
+				foreach (var op in dg.OrderBy(o => o.OperationType.Name)) {
+					var perms = op.Permissions.Count > 0
+						? string.Join(", ", op.Permissions.Select(p => $"`{p}`"))
+						: "_none_";
+					var authorizer = op.AuthorizerType?.Name is { } an ? $"`{an}`" : "_none_";
+					sb.AppendLine($"| `{op.OperationType.Name}` | {op.GrantableKind ?? "?"} | {perms} | {authorizer} |");
+				}
+				sb.AppendLine();
+			}
+		}
 
 		// Rest of the existing documentation...
 		sb.AppendLine("## Role Hierarchy");
@@ -86,16 +157,19 @@ public class DomainDocumenter(
 		sb.AppendLine("```");
 		sb.AppendLine();
 
-		// Enhanced Analysis Results (omitted when no service provider was supplied)
-		if (services is not null) {
-			var analysisReport = this.GetAnalysisReport(services);
-			sb.Append(analysisReport.ToMarkdown());
-		}
+		// Analysis section
+		var analysisReport = this.RunAnalysis(sp, roleRegistry);
+		sb.Append(analysisReport.ToMarkdown());
 
 		return sb.ToString();
 	}
 
-	public string GenerateCsv(IServiceProvider? services = null) {
+	public string GenerateCsv() {
+
+		using var scope = scopeFactory.CreateScope();
+		var sp = scope.ServiceProvider;
+		var roleRegistry = sp.GetRequiredService<IAuthorizationRoleRegistry>();
+
 		var sb = new StringBuilder();
 		var combinedInfo = domainModel.GetAllRules();
 		var allRoles = roleRegistry.GetRegisteredRoles();
@@ -125,6 +199,42 @@ public class DomainDocumenter(
 				$"{EscapeCsvField(policy.Description)}");
 		}
 
+		sb.AppendLine();
+
+		// Authorization Constraints (Phase 1, Step 2)
+		sb.AppendLine("## CONSTRAINTS");
+		sb.AppendLine("Section,Order,TypeName,FullName,Namespace");
+		var constraintTypes = domainModel.GetAuthorizationConstraintTypes();
+		var constraintIdx = 1;
+		foreach (var ct in constraintTypes) {
+			sb.AppendLine(
+				$"Constraint," +
+				$"{constraintIdx}," +
+				$"{EscapeCsvField(ct.Name)}," +
+				$"{EscapeCsvField(ct.FullName ?? ct.Name)}," +
+				$"{EscapeCsvField(ct.Namespace ?? string.Empty)}");
+			constraintIdx++;
+		}
+		sb.AppendLine();
+
+		// Grants (Phase 1, Step 1)
+		sb.AppendLine("## GRANTS");
+		sb.AppendLine("Section,GrantDomain,OperationName,OperationFullName,GrantableKind,Permissions,AuthorizerName,IsSelfScoped,GrantProviderRegistered");
+		var grantedOperationsForCsv = domainModel.GetAllOperations().Where(o => o.IsGranted).ToList();
+		var grantProviderRegistered = domainModel.IsOperationGrantProviderRegistered;
+		foreach (var op in grantedOperationsForCsv.OrderBy(o => o.GrantDomain).ThenBy(o => o.OperationType.Name)) {
+			var perms = string.Join(";", op.Permissions.Select(p => p.ToString()));
+			sb.AppendLine(
+				$"Grant," +
+				$"{EscapeCsvField(op.GrantDomain ?? string.Empty)}," +
+				$"{EscapeCsvField(op.OperationType.Name)}," +
+				$"{EscapeCsvField(op.OperationType.FullName ?? op.OperationType.Name)}," +
+				$"{EscapeCsvField(op.GrantableKind ?? string.Empty)}," +
+				$"{EscapeCsvField(perms)}," +
+				$"{EscapeCsvField(op.AuthorizerType?.Name ?? string.Empty)}," +
+				$"{op.IsSelfScoped}," +
+				$"{grantProviderRegistered}");
+		}
 		sb.AppendLine();
 
 		// SECTION 1: Role hierarchy with improved structure
@@ -166,7 +276,7 @@ public class DomainDocumenter(
 		// SECTION 2: Authorization rules with improved structure for visualization
 		var rules = domainModel.GetAuthorizationRules();
 		sb.AppendLine("## AUTHORIZATION RULES");
-		sb.AppendLine("Section,ResourceName,ValidatorName,PropertyPath,ValidationType,Message,Condition,IncludesRBAC,SortOrder");
+		sb.AppendLine("Section,OperationName,ValidatorName,PropertyPath,ValidationType,Message,Condition,IncludesRBAC,SortOrder");
 
 		var sortOrder = 0;
 		foreach (var rule in rules) {
@@ -182,7 +292,7 @@ public class DomainDocumenter(
 
 			sb.AppendLine(
 				$"AuthRule," +
-				$"{EscapeCsvField(rule.ResourceType.Name)}," +
+				$"{EscapeCsvField(rule.OperationType.Name)}," +
 				$"{EscapeCsvField(rule.AuthorizerType.Name)}," +
 				$"{EscapeCsvField(rule.PropertyPath ?? "AuthorizationContext")}," +
 				$"{EscapeCsvField(validationType)}," +
@@ -197,29 +307,29 @@ public class DomainDocumenter(
 		// Note: Domain architecture details are available in the Domain Architecture
 		// analyzer results and the dedicated Domain Architecture tab/section
 
-		// SECTION 4: Resource-Role Matrix (excellent for heat map visualizations)
-		sb.AppendLine("## RESOURCE ROLE MATRIX");
-		sb.AppendLine("Section,ResourceName,RoleName,AccessConditions");
+		// SECTION 4: Operation-Role Matrix (excellent for heat map visualizations)
+		sb.AppendLine("## OPERATION ROLE MATRIX");
+		sb.AppendLine("Section,OperationName,RoleName,AccessConditions");
 
-		// Get unique resource types
-		var resourceTypes = rules
-			.Select(r => r.ResourceType.Name)
+		// Get unique operation types
+		var operationTypes = rules
+			.Select(r => r.OperationType.Name)
 			.Distinct();
 
 		// Generate the matrix
-		foreach (var resourceType in resourceTypes) {
+		foreach (var operationType in operationTypes) {
 			foreach (var role in allRoles) {
 				// Check for explicit rules
 				var explicitRules = rules.Where(r =>
-					r.ResourceType.Name == resourceType &&
+					r.OperationType.Name == operationType &&
 					r.Message.Contains(role.ToString()));
 				if (explicitRules.Any()) {
 
 					var accessConditions = "";
 
 					sb.AppendLine(
-						$"ResourceRoleMatrix," +
-						$"{EscapeCsvField(resourceType)}," +
+						$"OperationRoleMatrix," +
+						$"{EscapeCsvField(operationType)}," +
 						$"{EscapeCsvField(role.ToString())}," +
 						$"{EscapeCsvField(accessConditions)}");
 
@@ -229,22 +339,19 @@ public class DomainDocumenter(
 
 		sb.AppendLine();
 
-		// SECTION 5: Security analysis (omitted when no service provider was supplied)
-		if (services is null) {
-			return sb.ToString();
-		}
-		var analysisReport = this.GetAnalysisReport(services);
+		// SECTION 5: Security analysis
+		var analysisReport = this.RunAnalysis(sp, roleRegistry);
 		sb.AppendLine("## SECURITY ANALYSIS");
-		sb.AppendLine("Section,Category,Severity,Description,RelatedObjects,ImpactedResources,ImpactedRoles");
+		sb.AppendLine("Section,Category,Severity,Description,RelatedObjects,ImpactedOperations,ImpactedRoles");
 
 		foreach (var issue in analysisReport.Issues) {
 			// Join related objects with semicolon for CSV compatibility
 			var relatedObjs = string.Join(";", issue.RelatedTypeNames);
 
-			// Extract impacted resources
-			var impactedResources = string.Join(";",
+			// Extract impacted operations
+			var impactedOperations = string.Join(";",
 				issue.RelatedTypeNames
-					.Where(typeName => resourceTypes.Any(rt => typeName.Contains(rt))));
+					.Where(typeName => operationTypes.Any(rt => typeName.Contains(rt))));
 
 			// Extract impacted roles
 			var impactedRoles = string.Join(";",
@@ -257,7 +364,7 @@ public class DomainDocumenter(
 				$"{EscapeCsvField(issue.Severity.ToString())}," +
 				$"{EscapeCsvField(issue.Description)}," +
 				$"{EscapeCsvField(relatedObjs)}," +
-				$"{EscapeCsvField(impactedResources)}," +
+				$"{EscapeCsvField(impactedOperations)}," +
 				$"{EscapeCsvField(impactedRoles)}");
 		}
 
@@ -278,7 +385,12 @@ public class DomainDocumenter(
 		return field;
 	}
 
-	public string RenderHtmlPage(IServiceProvider? services = null) {
+	public string RenderHtmlPage() {
+
+		using var scope = scopeFactory.CreateScope();
+		var sp = scope.ServiceProvider;
+		var roleRegistry = sp.GetRequiredService<IAuthorizationRoleRegistry>();
+
 		var sb = new StringBuilder();
 
 		sb.AppendLine("<!DOCTYPE html>");
@@ -290,7 +402,7 @@ public class DomainDocumenter(
 		sb.AppendLine("    .role { background-color: #f8f0ff; border: 1px solid #d0b0ff; border-radius: 4px; margin: 5px; padding: 10px; }");
 		sb.AppendLine("    .app-role { background-color: #f0f0ff; border: 1px solid #b0b0ff; }");
 		sb.AppendLine("    .custom-role { background-color: #fff0f0; border: 1px solid #ffb0b0; }");
-		sb.AppendLine("    .resource { background-color: #f0fff0; border: 1px solid #b0ffb0; border-radius: 4px; margin: 10px 0; padding: 10px; }");
+		sb.AppendLine("    .operation { background-color: #f0fff0; border: 1px solid #b0ffb0; border-radius: 4px; margin: 10px 0; padding: 10px; }");
 		sb.AppendLine("    .validator { margin-left: 20px; }");
 		sb.AppendLine("    .rule { margin-left: 40px; background-color: #fffff0; border: 1px solid #ffffd0; border-radius: 4px; padding: 8px; margin-bottom: 5px; }");
 		sb.AppendLine("    .inheritance { color: #666; }");
@@ -344,8 +456,8 @@ public class DomainDocumenter(
 		sb.AppendLine("    <div class=\"stat-label\">Total Authorization Rules</div>");
 		sb.AppendLine("  </div>");
 		sb.AppendLine("  <div class=\"stat-card\">");
-		sb.AppendLine($"    <div class=\"stat-number\">{combinedInfo.ResourceRules.Count}</div>");
-		sb.AppendLine("    <div class=\"stat-label\">Resource Rules</div>");
+		sb.AppendLine($"    <div class=\"stat-number\">{combinedInfo.OperationRules.Count}</div>");
+		sb.AppendLine("    <div class=\"stat-label\">Operation Rules</div>");
 		sb.AppendLine("  </div>");
 		sb.AppendLine("  <div class=\"stat-card\">");
 		sb.AppendLine($"    <div class=\"stat-number\">{combinedInfo.PolicyRules.Count}</div>");
@@ -359,12 +471,19 @@ public class DomainDocumenter(
 
 		// Enhanced tabs - ADD NEW POLICY TAB
 		sb.AppendLine("<div class=\"tabs\">");
-		sb.AppendLine("  <div class=\"tab active\" onclick=\"showTab('overview')\">Overview</div>");
-		sb.AppendLine("  <div class=\"tab\" onclick=\"showTab('domain')\">Domain Architecture</div>");
-		sb.AppendLine("  <div class=\"tab\" onclick=\"showTab('policies')\">Policy Validators</div>");
-		sb.AppendLine("  <div class=\"tab\" onclick=\"showTab('roles')\">Roles</div>");
-		sb.AppendLine("  <div class=\"tab\" onclick=\"showTab('rules')\">Resource Rules</div>");
-		sb.AppendLine("  <div class=\"tab\" onclick=\"showTab('analysis')\">Security Analysis</div>");
+		// Tab order follows the DefaultAuthorization pipeline:
+		// Overview/Domain set the stage, then pipeline phases:
+		//   Grants (Phase 1, Step 1) → Constraints (Phase 1, Step 2)
+		//   → Operations (Phase 2 — authorizer rules) → Policies (Phase 3)
+		// Roles before Security Analysis closes the report.
+		sb.AppendLine("  <div class=\"tab active\" data-tab=\"overview\" onclick=\"showTab('overview')\">Overview</div>");
+		sb.AppendLine("  <div class=\"tab\" data-tab=\"domain\" onclick=\"showTab('domain')\">Domain Architecture</div>");
+		sb.AppendLine("  <div class=\"tab\" data-tab=\"grants\" onclick=\"showTab('grants')\">Grants</div>");
+		sb.AppendLine("  <div class=\"tab\" data-tab=\"constraints\" onclick=\"showTab('constraints')\">Constraints</div>");
+		sb.AppendLine("  <div class=\"tab\" data-tab=\"operations\" onclick=\"showTab('operations')\">Operations</div>");
+		sb.AppendLine("  <div class=\"tab\" data-tab=\"policies\" onclick=\"showTab('policies')\">Policies</div>");
+		sb.AppendLine("  <div class=\"tab\" data-tab=\"roles\" onclick=\"showTab('roles')\">Roles</div>");
+		sb.AppendLine("  <div class=\"tab\" data-tab=\"analysis\" onclick=\"showTab('analysis')\">Security Analysis</div>");
 		sb.AppendLine("</div>");
 
 		// NEW: Overview Tab
@@ -391,15 +510,15 @@ public class DomainDocumenter(
 		// NEW: Domain Architecture Tab
 		sb.AppendLine("<div id=\"domain\" class=\"tab-content\">");
 		sb.AppendLine("  <h2>Domain Architecture</h2>");
-		sb.AppendLine("  <p>Complete view of all domain resources (IDomainObject) across your domain, including both protected and anonymous resources.</p>");
+		sb.AppendLine("  <p>Complete view of all domain operations (IDomainObject) across your domain, including both protected and anonymous operations.</p>");
 
 		// Get domain data from the unified provider
 		var htmlCatalog = domainModel.GetCatalog();
 
 		// Extract overall metrics
-		var totalDomainResources = htmlCatalog.Metrics.TotalResources;
-		var protectedDomainResources = htmlCatalog.Metrics.ProtectedResources;
-		var anonymousDomainResources = htmlCatalog.Metrics.AnonymousResources;
+		var totalDomainOperations = htmlCatalog.Metrics.TotalOperations;
+		var protectedDomainOperations = htmlCatalog.Metrics.ProtectedOperations;
+		var anonymousDomainOperations = htmlCatalog.Metrics.AnonymousOperations;
 		var domainCoveragePercentage = htmlCatalog.Metrics.OverallCoveragePercentage;
 		var totalDomainBoundaries = htmlCatalog.Metrics.TotalDomains;
 
@@ -410,15 +529,15 @@ public class DomainDocumenter(
 		sb.AppendLine("      <div class=\"stat-label\">Domain Boundaries</div>");
 		sb.AppendLine("    </div>");
 		sb.AppendLine("    <div class=\"stat-card\">");
-		sb.AppendLine($"      <div class=\"stat-number\">{totalDomainResources}</div>");
-		sb.AppendLine("      <div class=\"stat-label\">Total Resources</div>");
+		sb.AppendLine($"      <div class=\"stat-number\">{totalDomainOperations}</div>");
+		sb.AppendLine("      <div class=\"stat-label\">Total Operations</div>");
 		sb.AppendLine("    </div>");
 		sb.AppendLine("    <div class=\"stat-card\">");
-		sb.AppendLine($"      <div class=\"stat-number\" style=\"color: #28a745;\">{protectedDomainResources}</div>");
+		sb.AppendLine($"      <div class=\"stat-number\" style=\"color: #28a745;\">{protectedDomainOperations}</div>");
 		sb.AppendLine("      <div class=\"stat-label\">Protected</div>");
 		sb.AppendLine("    </div>");
 		sb.AppendLine("    <div class=\"stat-card\">");
-		sb.AppendLine($"      <div class=\"stat-number\" style=\"color: #ffc107;\">{anonymousDomainResources}</div>");
+		sb.AppendLine($"      <div class=\"stat-number\" style=\"color: #ffc107;\">{anonymousDomainOperations}</div>");
 		sb.AppendLine("      <div class=\"stat-label\">Anonymous</div>");
 		sb.AppendLine("    </div>");
 		sb.AppendLine("    <div class=\"stat-card\">");
@@ -427,12 +546,12 @@ public class DomainDocumenter(
 		sb.AppendLine("    </div>");
 		sb.AppendLine("  </div>");
 
-		// Domain breakdown details are available through the Anonymous Resource analyzer issues and analysis
+		// Domain breakdown details are available through the Anonymous Operation analyzer issues and analysis
 
-		// Domain architecture issues - get from full analysis report (only when sp supplied)
-		var analysisReportForDomain = services is not null ? this.GetAnalysisReport(services) : null;
-		var domainIssues = analysisReportForDomain?.Issues
-			.Where(i => i.Category == "Anonymous Resources").ToList() ?? [];
+		// Domain architecture issues - pulled from the analysis report
+		var analysisReportForDomain = this.RunAnalysis(sp, roleRegistry);
+		var domainIssues = analysisReportForDomain.Issues
+			.Where(i => i.Category == "Anonymous Operations").ToList();
 		if (domainIssues.Count != 0) {
 			sb.AppendLine("  <h3>Architecture Recommendations</h3>");
 
@@ -457,7 +576,7 @@ public class DomainDocumenter(
 		// Policy Validators Tab
 		sb.AppendLine("<div id=\"policies\" class=\"tab-content\">");
 		sb.AppendLine("  <h2>Policy Validators</h2>");
-		sb.AppendLine("  <p>Cross-cutting authorization policies that apply to multiple resources based on attributes or global rules.</p>");
+		sb.AppendLine("  <p>Cross-cutting authorization policies that apply to multiple operations based on attributes or global rules.</p>");
 
 		if (combinedInfo.PolicyRules.Any()) {
 			var attributePolicies = combinedInfo.PolicyRules.Where(p => p.IsAttributeBased).OrderBy(p => p.Order);
@@ -549,6 +668,110 @@ public class DomainDocumenter(
 		}
 		sb.AppendLine("</div>");
 
+		// Constraints Tab — IAuthorizationConstraint registrations (Phase 1, Step 2 of pipeline)
+		sb.AppendLine("<div id=\"constraints\" class=\"tab-content\">");
+		sb.AppendLine("  <h2>Authorization Constraints</h2>");
+		sb.AppendLine("  <p><code>IAuthorizationConstraint</code> implementations run as <strong>Phase 1, Step 2</strong> of the authorization pipeline, in registration order, after grant evaluation and before any operation authorizer or policy validator. Each can short-circuit the pipeline (e.g. global maintenance mode, tenant suspension, IP allow-list).</p>");
+
+		var constraintTypes = domainModel.GetAuthorizationConstraintTypes();
+		if (constraintTypes.Count == 0) {
+			sb.AppendLine("  <div class=\"info\"><strong>No constraints registered.</strong> This is a valid configuration — most apps don't need cross-cutting pre-authorization gates.</div>");
+		} else {
+			sb.AppendLine("  <div class=\"stats-grid\">");
+			sb.AppendLine($"    <div class=\"stat-card\"><div class=\"stat-number\">{constraintTypes.Count}</div><div class=\"stat-label\">Registered</div></div>");
+			sb.AppendLine("  </div>");
+
+			sb.AppendLine("  <h3>Execution Order</h3>");
+			sb.AppendLine("  <p>Constraints execute in the order shown below. The first failure short-circuits the pipeline.</p>");
+			var idx = 1;
+			foreach (var ct in constraintTypes) {
+				sb.AppendLine("  <div class=\"resource\">");
+				sb.AppendLine($"    <h4>{idx}. {ct.Name}</h4>");
+				sb.AppendLine($"    <div><strong>Type:</strong> <code>{ct.FullName ?? ct.Name}</code></div>");
+				if (ct.Namespace is not null) {
+					sb.AppendLine($"    <div><strong>Namespace:</strong> {ct.Namespace}</div>");
+				}
+				sb.AppendLine("  </div>");
+				idx++;
+			}
+		}
+		sb.AppendLine("</div>");
+
+		// Grants Tab — granted operations grouped by grant domain
+		sb.AppendLine("<div id=\"grants\" class=\"tab-content\">");
+		sb.AppendLine("  <h2>Grants</h2>");
+		sb.AppendLine("  <p>Operations gated by the grant pipeline (<strong>Phase 1, Step 1</strong>). A granted operation implements one of <code>IGrantableSelfBase</code>, <code>IGrantableMutateBase</code>, <code>IGrantableLookupBase</code>, or <code>IGrantableSearchBase</code>, and (typically) declares one or more <code>[RequiresGrant]</code> permissions. Grant evaluation runs through the registered <code>IOperationGrantProvider</code> before constraints, operation authorizers, or policy validators.</p>");
+
+		var grantedOperations = domainModel.GetAllOperations()
+			.Where(o => o.IsGranted)
+			.ToList();
+
+		if (grantedOperations.Count == 0) {
+			sb.AppendLine("  <div class=\"info\"><strong>No granted operations registered.</strong> Grant-based access control is unused. This is fine for apps relying solely on RBAC + operation authorizers.</div>");
+		} else {
+			var grantDomains = grantedOperations
+				.Where(o => o.GrantDomain is not null)
+				.Select(o => o.GrantDomain!)
+				.Distinct(StringComparer.OrdinalIgnoreCase)
+				.OrderBy(d => d, StringComparer.OrdinalIgnoreCase)
+				.ToList();
+
+			var distinctPermissions = grantedOperations
+				.SelectMany(o => o.Permissions)
+				.Select(p => p.ToString())
+				.Distinct(StringComparer.OrdinalIgnoreCase)
+				.Count();
+
+			sb.AppendLine("  <div class=\"stats-grid\">");
+			sb.AppendLine($"    <div class=\"stat-card\"><div class=\"stat-number\">{grantedOperations.Count}</div><div class=\"stat-label\">Granted Operations</div></div>");
+			sb.AppendLine($"    <div class=\"stat-card\"><div class=\"stat-number\">{grantDomains.Count}</div><div class=\"stat-label\">Grant Domains</div></div>");
+			sb.AppendLine($"    <div class=\"stat-card\"><div class=\"stat-number\">{distinctPermissions}</div><div class=\"stat-label\">Distinct Permissions</div></div>");
+			sb.AppendLine($"    <div class=\"stat-card\"><div class=\"stat-number\" style=\"color: {(domainModel.IsOperationGrantProviderRegistered ? "#28a745" : "#cc0000")};\">{(domainModel.IsOperationGrantProviderRegistered ? "Registered" : "Missing")}</div><div class=\"stat-label\"><code>IOperationGrantProvider</code></div></div>");
+			sb.AppendLine("  </div>");
+
+			if (!domainModel.IsOperationGrantProviderRegistered) {
+				sb.AppendLine("  <div class=\"error\"><strong>Critical:</strong> granted operations are declared but no <code>IOperationGrantProvider</code> is registered. Grant evaluation cannot run; access decisions will fail. Register a provider via <code>services.AddOperationGrants&lt;TResolver&gt;()</code>.</div>");
+			}
+
+			// Group operations by grant domain
+			var byDomain = grantedOperations
+				.GroupBy(o => o.GrantDomain ?? "(no domain)", StringComparer.OrdinalIgnoreCase)
+				.OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase);
+
+			foreach (var domainGroup in byDomain) {
+				sb.AppendLine("  <div class=\"resource\">");
+				sb.AppendLine($"    <h3>Domain: <code>{domainGroup.Key}</code> ({domainGroup.Count()} operation(s))</h3>");
+
+				var domainPermissions = domainGroup
+					.SelectMany(o => o.Permissions)
+					.Select(p => p.ToString())
+					.Distinct(StringComparer.OrdinalIgnoreCase)
+					.OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
+					.ToList();
+
+				if (domainPermissions.Count > 0) {
+					sb.AppendLine($"    <div><strong>Permissions:</strong> {string.Join(", ", domainPermissions.Select(p => $"<code>{p}</code>"))}</div>");
+				}
+
+				sb.AppendLine("    <table style=\"width: 100%; margin-top: 10px; border-collapse: collapse;\">");
+				sb.AppendLine("      <thead><tr style=\"background: #f0f0f0;\"><th style=\"text-align:left; padding: 6px;\">Operation</th><th style=\"text-align:left; padding: 6px;\">Kind</th><th style=\"text-align:left; padding: 6px;\">Permissions</th><th style=\"text-align:left; padding: 6px;\">Authorizer</th></tr></thead>");
+				sb.AppendLine("      <tbody>");
+				foreach (var op in domainGroup.OrderBy(o => o.OperationType.Name)) {
+					var perms = op.Permissions.Count > 0
+						? string.Join(", ", op.Permissions.Select(p => $"<code>{p}</code>"))
+						: "<em>none</em>";
+					var authorizer = op.AuthorizerType is not null
+						? $"<code>{op.AuthorizerType.Name}</code>"
+						: "<em>none</em>";
+					var kind = op.GrantableKind ?? "?";
+					sb.AppendLine($"        <tr style=\"border-bottom: 1px solid #eee;\"><td style=\"padding: 6px;\"><code>{op.OperationType.Name}</code></td><td style=\"padding: 6px;\">{kind}</td><td style=\"padding: 6px;\">{perms}</td><td style=\"padding: 6px;\">{authorizer}</td></tr>");
+				}
+				sb.AppendLine("      </tbody></table>");
+				sb.AppendLine("  </div>");
+			}
+		}
+		sb.AppendLine("</div>");
+
 		// Roles Tab (existing, but now not the first tab)
 		sb.AppendLine("<div id=\"roles\" class=\"tab-content\">");
 		sb.AppendLine("  <h2>Role Hierarchy</h2>");
@@ -583,22 +806,23 @@ public class DomainDocumenter(
 		sb.AppendLine("  </div>");
 		sb.AppendLine("</div>");
 
-		// Resource Rules Tab (renamed from "Rules")
-		sb.AppendLine("<div id=\"rules\" class=\"tab-content\">");
-		sb.AppendLine("  <h2>Resource-Specific Authorization Rules</h2>");
+		// Operation Rules Tab (renamed from "Rules")
+		sb.AppendLine("<div id=\"operations\" class=\"tab-content\">");
+		sb.AppendLine("  <h2>Operations</h2>");
+		sb.AppendLine("  <p>Each operation (<code>IDomainObject</code> / <code>IAuthorizableObject</code>) and the resource-specific authorization rules attached by its authorizer (Phase 2 of the pipeline).</p>");
 
-		// Group rules by resource
-		var rulesByResource = combinedInfo.ResourceRules
-			.GroupBy(r => r.ResourceType)
+		// Group rules by operation
+		var rulesByOperation = combinedInfo.OperationRules
+			.GroupBy(r => r.OperationType)
 			.OrderBy(g => g.Key.Name);
 
-		foreach (var resourceGroup in rulesByResource) {
-			sb.AppendLine($"  <div class=\"resource\">");
-			sb.AppendLine($"    <h3>Resource: {resourceGroup.Key.Name}</h3>");
+		foreach (var operationGroup in rulesByOperation) {
+			sb.AppendLine($"  <div class=\"operation\">");
+			sb.AppendLine($"    <h3>Operation: {operationGroup.Key.Name}</h3>");
 
-			// Show which policies might also apply to this resource
+			// Show which policies might also apply to this operation
 			var applicablePolicies = combinedInfo.PolicyRules
-				.Where(p => p.IsAttributeBased && p.TargetAttributeType is not null && resourceGroup.Key.GetCustomAttributes(p.TargetAttributeType, false).Length != 0)
+				.Where(p => p.IsAttributeBased && p.TargetAttributeType is not null && operationGroup.Key.GetCustomAttributes(p.TargetAttributeType, false).Length != 0)
 				.ToList();
 
 			if (applicablePolicies.Count != 0) {
@@ -608,7 +832,7 @@ public class DomainDocumenter(
 			}
 
 			// Group by validator
-			var validatorGroups = resourceGroup
+			var validatorGroups = operationGroup
 				.GroupBy(r => r.AuthorizerType)
 				.OrderBy(g => g.Key.Name);
 
@@ -638,21 +862,14 @@ public class DomainDocumenter(
 		}
 		sb.AppendLine("</div>");
 
-		// Analysis Tab (only when sp supplied)
+		// Analysis Tab
 		sb.AppendLine("<div id=\"analysis\" class=\"tab-content\">");
 		sb.AppendLine("  <h2>Security Analysis</h2>");
 
-		if (services is null) {
-			sb.AppendLine("  <div class=\"info\"><strong>Analysis unavailable.</strong> Pass an <code>IServiceProvider</code> to <code>RenderHtmlPage</code> to populate this tab.</div>");
-			sb.AppendLine("</div>");
-			sb.AppendLine("</body></html>");
-			return sb.ToString();
-		}
-
-		var analysisReport = this.GetAnalysisReport(services);
+		var analysisReport = this.RunAnalysis(sp, roleRegistry);
 
 		// Overall Status
-		sb.AppendLine("  <div class=\"resource\">");
+		sb.AppendLine("  <div class=\"operation\">");
 		sb.AppendLine("    <h3>Overall Status</h3>");
 		sb.AppendLine($"    <div>Issues Found: {(analysisReport.HasIssues ? "Yes" : "No")}</div>");
 		sb.AppendLine($"    <div>Total Issues: {analysisReport.Issues.Count}</div>");
@@ -669,7 +886,7 @@ public class DomainDocumenter(
 		sb.AppendLine("  </div>");
 
 		// Detailed Issues
-		sb.AppendLine("  <div class=\"resource\">");
+		sb.AppendLine("  <div class=\"operation\">");
 		sb.AppendLine("    <h3>Detailed Issues</h3>");
 
 		foreach (var category in analysisReport.AnalyzerCategories.OrderBy(c => c)) {
@@ -740,56 +957,43 @@ public class DomainDocumenter(
 
 		sb.AppendLine("</div>");
 
-		// Enhanced JavaScript (existing with minor updates)
+		AppendHtmlTrailer(sb);
+		return sb.ToString();
+	}
+
+	/// <summary>
+	/// Closes the tabs page-frame and emits the JavaScript that drives tab switching
+	/// and Mermaid (re-)initialization. Always call before returning the HTML so the
+	/// page renders correctly even on early-exit paths (e.g. analysis tab unavailable).
+	/// </summary>
+	private static void AppendHtmlTrailer(StringBuilder sb) {
 		sb.AppendLine("<script>");
-		sb.AppendLine("// Initialize mermaid with configuration");
 		sb.AppendLine("mermaid.initialize({");
-		sb.AppendLine("  startOnLoad: false,");  // Changed from true to false
+		sb.AppendLine("  startOnLoad: false,");
 		sb.AppendLine("  securityLevel: 'loose',");
 		sb.AppendLine("  theme: 'default',");
 		sb.AppendLine("  flowchart: { useMaxWidth: false, htmlLabels: true }");
 		sb.AppendLine("});");
 		sb.AppendLine("");
 		sb.AppendLine("function showTab(tabId) {");
-		sb.AppendLine("  // Hide all tab contents");
 		sb.AppendLine("  document.querySelectorAll('.tab-content').forEach(content => {");
 		sb.AppendLine("    content.classList.remove('active');");
 		sb.AppendLine("  });");
-		sb.AppendLine("  ");
-		sb.AppendLine("  // Show the selected tab content");
 		sb.AppendLine("  document.getElementById(tabId).classList.add('active');");
-		sb.AppendLine("  ");
-		sb.AppendLine("  // Update tab buttons");
 		sb.AppendLine("  document.querySelectorAll('.tab').forEach(tab => {");
-		sb.AppendLine("    tab.classList.remove('active');");
+		sb.AppendLine("    tab.classList.toggle('active', tab.getAttribute('data-tab') === tabId);");
 		sb.AppendLine("  });");
-		sb.AppendLine("  ");
-		sb.AppendLine("  // Add active class to clicked tab");
-		sb.AppendLine("  document.querySelectorAll('.tab').forEach(tab => {");
-		sb.AppendLine("    const tabText = tab.textContent.toLowerCase();");
-		sb.AppendLine("    const tabIdNormalized = tabId.replace('policies', 'policy').replace('domain', 'domain architecture');");
-		sb.AppendLine("    if (tabText.includes(tabIdNormalized) || (tabId === 'domain' && tabText.includes('domain'))) {");
-		sb.AppendLine("      tab.classList.add('active');");
-		sb.AppendLine("    }");
-		sb.AppendLine("  });");
-		sb.AppendLine("  ");
-		sb.AppendLine("  // Re-render mermaid diagrams when switching tabs");
 		sb.AppendLine("  if (document.getElementById(tabId).querySelector('.mermaid')) {");
 		sb.AppendLine("    setTimeout(() => {");
 		sb.AppendLine("      try {");
-		sb.AppendLine("        // Reset all mermaid diagrams in this tab");
 		sb.AppendLine("        const mermaidElements = document.getElementById(tabId).querySelectorAll('.mermaid');");
 		sb.AppendLine("        mermaidElements.forEach(element => {");
-		sb.AppendLine("          // Store original content if not already stored");
 		sb.AppendLine("          if (!element.dataset.originalContent) {");
 		sb.AppendLine("            element.dataset.originalContent = element.textContent;");
 		sb.AppendLine("          }");
-		sb.AppendLine("          // Restore original content and reset processed flag");
 		sb.AppendLine("          element.innerHTML = element.dataset.originalContent;");
 		sb.AppendLine("          element.removeAttribute('data-processed');");
 		sb.AppendLine("        });");
-		sb.AppendLine("        ");
-		sb.AppendLine("        // Re-initialize");
 		sb.AppendLine("        mermaid.init(undefined, mermaidElements);");
 		sb.AppendLine("      } catch (error) {");
 		sb.AppendLine("        console.error('Error initializing mermaid:', error);");
@@ -798,14 +1002,10 @@ public class DomainDocumenter(
 		sb.AppendLine("  }");
 		sb.AppendLine("}");
 		sb.AppendLine("");
-		sb.AppendLine("// Initialize on page load");
 		sb.AppendLine("window.addEventListener('load', function() {");
-		sb.AppendLine("  // Store original content for all mermaid elements before any processing");
 		sb.AppendLine("  document.querySelectorAll('.mermaid').forEach(element => {");
 		sb.AppendLine("    element.dataset.originalContent = element.textContent;");
 		sb.AppendLine("  });");
-		sb.AppendLine("  ");
-		sb.AppendLine("  // Initialize only the active tab on page load");
 		sb.AppendLine("  try {");
 		sb.AppendLine("    mermaid.init(undefined, document.querySelectorAll('.tab-content.active .mermaid'));");
 		sb.AppendLine("  } catch (error) {");
@@ -813,16 +1013,12 @@ public class DomainDocumenter(
 		sb.AppendLine("  }");
 		sb.AppendLine("});");
 		sb.AppendLine("</script>");
-
 		sb.AppendLine("</body>");
 		sb.AppendLine("</html>");
-
-		return sb.ToString();
-
 	}
 
-	private AnalysisReport GetAnalysisReport(IServiceProvider services) {
-		var analyzer = DomainAnalyzerProvider.CreateAnalyzer(roleRegistry, domainModel, services);
+	private AnalysisReport RunAnalysis(IServiceProvider scopedProvider, IAuthorizationRoleRegistry roleRegistry) {
+		var analyzer = DomainAnalyzerProvider.CreateAnalyzer(roleRegistry, domainModel, scopedProvider);
 		return analyzer.AnalyzeAll();
 	}
 

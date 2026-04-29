@@ -1,13 +1,13 @@
 namespace Cirreum.Introspection.Modeling.Export;
 /// <summary>
-/// Represents a domain resource with its authorization information.
-/// This is the serializable view of a resource - whether protected or anonymous.
+/// Represents a domain operation with its authorization information.
+/// This is the serializable view of a domain operation - whether protected or anonymous.
 /// </summary>
-public sealed record ResourceInfo(
-	string ResourceName,
-	string ResourceFullName,
+public sealed record OperationInfo(
+	string OperationName,
+	string OperationFullName,
 	string DomainBoundary,
-	string ResourceKind,
+	string OperationKind,
 	bool IsAnonymous,
 	bool IsCacheableQuery,
 	bool IsProtected,

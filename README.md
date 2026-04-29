@@ -45,31 +45,24 @@ var report = app.Services.AnalyzeAuthorization();
 
 #### Startup validation (consumer-authored)
 
-The library deliberately ships no `ISystemInitializer` / `IAutoInitialize` / `IStartupTask`. If every consumer that referenced the package got auto-validation, that would be the wrong default. Compose your own policy:
+The library deliberately ships no `IAutoInitialize` / `IStartupTask` / `ISystemInitializer`. If every consumer that referenced the package got auto-validation, that would be the wrong default. Compose your own policy.
 
-#### ISystemInitializer
+> **Ordering note:** validation reads `IAuthorizationRoleRegistry`, `IPolicyValidator`, `IAuthorizationConstraint`, and `IOperationGrantProvider`, all populated by the runtime's `IAutoInitialize` pass. The Cirreum startup pipeline runs `ISystemInitializer` → `IAutoInitialize` → `IStartupTask`, so `IStartupTask` is also a valid call site. The example below uses `IHostedService.StartAsync` because it runs *after* `ApplicationStarted` fires (fully-initialized state including any `IStartupTask` side effects), and it's the standard ASP.NET Core extension point for "run once at app startup."
 
 ```csharp
-internal sealed class ValidateAuthOnStart : ISystemInitializer {
-	public ValueTask RunAsync(IServiceProvider serviceProvider) {
-		sp.ValidateAuthorizationConfiguration();
-		return ValueTask.CompletedTask;
+internal sealed class ValidateAuthOnStart(IServiceProvider services) : IHostedService {
+	public Task StartAsync(CancellationToken ct) {
+		services.ValidateAuthorizationConfiguration();   // throws on Error severity
+		return Task.CompletedTask;
 	}
+	public Task StopAsync(CancellationToken ct) => Task.CompletedTask;
 }
 ```
 
-#### IStartupTask
+Register alongside the other hosted services:
 
 ```csharp
-internal sealed class ValidateAuthOnStart(
-	IServiceProvider serviceProvider
-) : IStartupTask {
-	public int Order { get; } = 100;
-	public ValueTask ExecuteAsync() {
-		sp.ValidateAuthorizationConfiguration();
-		return ValueTask.CompletedTask;
-	}
-}
+builder.Services.AddHostedService<ValidateAuthOnStart>();
 ```
 
 #### Admin endpoint
@@ -77,6 +70,22 @@ internal sealed class ValidateAuthOnStart(
 ```csharp
 app.MapGet("/admin/authz/report", (IServiceProvider sp) =>
 	sp.AnalyzeAuthorization()).RequireAuthorization("Admin");
+```
+
+#### Documenter
+
+`IDomainDocumenter` exposes parameterless render methods. The documenter opens its own DI scope per call, so it works identically from a Blazor WASM component, an API request handler, a CLI host, or anywhere else.
+
+```csharp
+@inject IDomainDocumenter Documenter
+
+<iframe srcdoc="@Documenter.RenderHtmlPage()" class="w-100 h-100" />
+```
+
+```csharp
+app.MapGet("/admin/authz/docs", (IDomainDocumenter d) =>
+	Results.Content(d.RenderHtmlPage(), "text/html"))
+   .RequireAuthorization("Admin");
 ```
 
 #### Integration test
@@ -92,7 +101,7 @@ public void Authorization_Configuration_Has_No_Errors() {
 
 ### Architectural principle
 
-**No introspection type retains `IServiceProvider`.** `IDomainModel` is a singleton that holds an `IServiceScopeFactory`; DI-derived data (policy validators, authorization constraints, access-provider registrations) is snapshotted on first access through a transient scope, and the scope is released. Reflection-derived data (resources, rules, catalog) is cached via `Lazy<T>`. Repeated calls are pointer reads against immutable snapshots.
+**No introspection type retains `IServiceProvider`.** `IDomainModel` is a singleton that holds an `IServiceScopeFactory`; DI-derived data (policy validators, authorization constraints, access-provider registrations) is snapshotted on first access through a transient scope, and the scope is released. Reflection-derived data (operations, rules, catalog) is cached via `Lazy<T>`. Repeated calls are pointer reads against immutable snapshots.
 
 There is no `Initialize` step and no public refresh path. The captured-scope failure mode that affected pre-extraction releases is structurally impossible.
 

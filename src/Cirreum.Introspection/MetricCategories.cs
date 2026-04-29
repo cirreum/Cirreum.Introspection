@@ -5,11 +5,11 @@ namespace Cirreum.Introspection;
 /// </summary>
 public static class MetricCategories {
 
-	public const string AnonymousResources = "AnonymousResources.";
-	public const string AuthorizableResources = "AuthorizableResources.";
+	public const string AnonymousOperations = "AnonymousOperations.";
+	public const string AuthorizableOperations = "AuthorizableOperations.";
 	public const string AuthorizationConstraints = "AuthorizationConstraints.";
 	public const string AuthorizationRules = "AuthorizationRules.";
-	public const string GrantedResources = "GrantedResources.";
+	public const string GrantedOperations = "GrantedOperations.";
 	public const string ObjectLevelAcl = "ObjectLevelACL.";
 	public const string PolicyValidation = "PolicyValidation.";
 	public const string RoleHierarchy = "RoleHierarchy.";
@@ -18,17 +18,17 @@ public static class MetricCategories {
 	/// Returns a user-friendly display name for the category associated with the specified metric key.
 	/// </summary>
 	/// <param name="metricKey">The metric key for which to retrieve the category display name. Must not be null or empty.</param>
-	/// <returns>A string containing the display name of the metric category. Returns "Anonymous Resources", "Authorization Rules",
-	/// "Policy Validation", "Protected Resources", or "Role Hierarchy" if the metric key matches a known category;
+	/// <returns>A string containing the display name of the metric category. Returns "Anonymous Operations", "Authorization Rules",
+	/// "Policy Validation", "Protected Operations", or "Role Hierarchy" if the metric key matches a known category;
 	/// otherwise, returns "General".</returns>
 	public static string GetMetricCategoryDisplayName(string metricKey) {
 
-		if (metricKey.StartsWith(AnonymousResources)) {
-			return "Anonymous Resources";
+		if (metricKey.StartsWith(AnonymousOperations)) {
+			return "Anonymous Operations";
 		}
 
-		if (metricKey.StartsWith(AuthorizableResources)) {
-			return "Authorizable Resources";
+		if (metricKey.StartsWith(AuthorizableOperations)) {
+			return "Authorizable Operations";
 		}
 
 		if (metricKey.StartsWith(AuthorizationConstraints)) {
@@ -39,8 +39,8 @@ public static class MetricCategories {
 			return "Authorization Rules";
 		}
 
-		if (metricKey.StartsWith(GrantedResources)) {
-			return "Granted Resources";
+		if (metricKey.StartsWith(GrantedOperations)) {
+			return "Granted Operations";
 		}
 
 		if (metricKey.StartsWith(ObjectLevelAcl)) {

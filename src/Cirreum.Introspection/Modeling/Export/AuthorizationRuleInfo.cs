@@ -5,8 +5,8 @@ namespace Cirreum.Introspection.Modeling.Export;
 /// This is the serializable view for visualization or inspection.
 /// </summary>
 public sealed record AuthorizationRuleInfo(
-	string ResourceTypeName,
-	string ResourceTypeFullName,
+	string OperationTypeName,
+	string OperationTypeFullName,
 	string AuthorizerTypeName,
 	string AuthorizerTypeFullName,
 	string PropertyPath,

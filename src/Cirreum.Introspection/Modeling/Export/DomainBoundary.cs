@@ -1,7 +1,7 @@
 namespace Cirreum.Introspection.Modeling.Export;
 
 /// <summary>
-/// A domain boundary (e.g., "Customers") containing the domain resources (aka Commands/Queries).
+/// A domain boundary (e.g., "Customers") containing the domain operations (aka Commands/Queries).
 /// </summary>
 public record DomainBoundary {
 
@@ -11,22 +11,22 @@ public record DomainBoundary {
 	public string Name { get; init; } = string.Empty;
 
 	/// <summary>
-	/// Resource kinds within this domain (e.g., "Commands", "Queries").
+	/// Operation kinds within this domain (e.g., "Commands", "Queries").
 	/// </summary>
-	public IReadOnlyDictionary<string, ResourceKind> Kinds { get; init; } = new Dictionary<string, ResourceKind>();
+	public IReadOnlyDictionary<string, OperationKind> Kinds { get; init; } = new Dictionary<string, OperationKind>();
 
 	/// <summary>
-	/// Total resources in this domain.
+	/// Total operations in this domain.
 	/// </summary>
 	public int TotalCount { get; init; }
 
 	/// <summary>
-	/// Protected resources in this domain.
+	/// Protected operations in this domain.
 	/// </summary>
 	public int ProtectedCount { get; init; }
 
 	/// <summary>
-	/// Anonymous resources in this domain.
+	/// Anonymous operations in this domain.
 	/// </summary>
 	public int AnonymousCount { get; init; }
 

@@ -29,8 +29,8 @@ using System.Reflection;
 public sealed class DomainModel : IDomainModel {
 
 	private readonly IServiceScopeFactory _scopeFactory;
-	private readonly Lazy<IReadOnlyList<ResourceTypeInfo>> _resources =
-		new(BuildResources, isThreadSafe: true);
+	private readonly Lazy<IReadOnlyList<OperationTypeInfo>> _operations =
+		new(BuildOperations, isThreadSafe: true);
 	private readonly Lazy<IReadOnlyList<AuthorizationRuleTypeInfo>> _rules =
 		new(BuildRules, isThreadSafe: true);
 	private readonly Lazy<DomainCatalog> _catalog;
@@ -47,19 +47,19 @@ public sealed class DomainModel : IDomainModel {
 	public DomainModel(IServiceScopeFactory scopeFactory) {
 		this._scopeFactory = scopeFactory;
 		this._catalog = new Lazy<DomainCatalog>(
-			() => DomainCatalog.Build([.. this._resources.Value.Select(r => r.ToResourceInfo())]),
+			() => DomainCatalog.Build([.. this._operations.Value.Select(r => r.ToOperationInfo())]),
 			isThreadSafe: true);
 	}
 
 	public DomainModel() : this(NullScopeFactory.Instance) { }
 
-	public IReadOnlyList<ResourceTypeInfo> GetAllResources() => this._resources.Value;
+	public IReadOnlyList<OperationTypeInfo> GetAllOperations() => this._operations.Value;
 
-	public IReadOnlyList<ResourceTypeInfo> GetAnonymousResources() =>
-		this._resources.Value.Where(r => r.IsAnonymous).ToList().AsReadOnly();
+	public IReadOnlyList<OperationTypeInfo> GetAnonymousOperations() =>
+		this._operations.Value.Where(r => r.IsAnonymous).ToList().AsReadOnly();
 
-	public IReadOnlyList<ResourceTypeInfo> GetAuthorizableResources() =>
-		this._resources.Value.Where(r => !r.IsAnonymous).ToList().AsReadOnly();
+	public IReadOnlyList<OperationTypeInfo> GetAuthorizableOperations() =>
+		this._operations.Value.Where(r => !r.IsAnonymous).ToList().AsReadOnly();
 
 	public IReadOnlyList<AuthorizationRuleTypeInfo> GetAuthorizationRules() =>
 		this._rules.Value;
@@ -82,12 +82,12 @@ public sealed class DomainModel : IDomainModel {
 	}
 
 	public CombinedRuleTypeInfo GetAllRules() {
-		var resourceRules = this.GetAuthorizationRules();
+		var operationRules = this.GetAuthorizationRules();
 		var policyRules = this.GetPolicyRules();
 		return new CombinedRuleTypeInfo(
-			ResourceRules: resourceRules,
+			OperationRules: operationRules,
 			PolicyRules: policyRules,
-			TotalRules: resourceRules.Count + policyRules.Count
+			TotalRules: operationRules.Count + policyRules.Count
 		);
 	}
 
@@ -181,7 +181,7 @@ public sealed class DomainModel : IDomainModel {
 
 	#region Build (reflection-derived)
 
-	private static ReadOnlyCollection<ResourceTypeInfo> BuildResources() {
+	private static ReadOnlyCollection<OperationTypeInfo> BuildOperations() {
 		var assemblies = Cirreum.AssemblyScanner.ScanAssemblies();
 		var allTypes = assemblies
 			.SelectMany(a => {
@@ -190,43 +190,43 @@ public sealed class DomainModel : IDomainModel {
 			.Where(t => t.IsClass && !t.IsAbstract)
 			.ToList();
 
-		var domainResourceTypes = allTypes.Where(IsDomainObject).ToList();
+		var domainOperationTypes = allTypes.Where(IsDomainObject).ToList();
 		var authorizerTypes = allTypes.Where(IsObjectAuthorizer).ToList();
-		var authorizersByResource = new Dictionary<Type, Type>();
+		var authorizersByOperation = new Dictionary<Type, Type>();
 		foreach (var authorizer in authorizerTypes) {
-			var resourceType = GetResourceTypeFromAuthorizer(authorizer);
-			if (resourceType != null) {
-				authorizersByResource[resourceType] = authorizer;
+			var operationType = GetResourceTypeFromAuthorizer(authorizer);
+			if (operationType != null) {
+				authorizersByOperation[operationType] = authorizer;
 			}
 		}
 
-		var resources = new List<ResourceTypeInfo>();
-		foreach (var resourceType in domainResourceTypes) {
-			var hasAuthorizer = authorizersByResource.TryGetValue(resourceType, out var authorizerType);
-			var rules = hasAuthorizer ? ExtractValidationRules(resourceType, authorizerType!) : [];
+		var operations = new List<OperationTypeInfo>();
+		foreach (var operationType in domainOperationTypes) {
+			var hasAuthorizer = authorizersByOperation.TryGetValue(operationType, out var authorizerType);
+			var rules = hasAuthorizer ? ExtractValidationRules(operationType, authorizerType!) : [];
 
-			var isAnonymous = !IsAuthorizableObject(resourceType);
-			var isCacheableQuery = IsCacheableQuery(resourceType);
-			var requiresAuthorization = !isAnonymous && ImplementsAuthorizableOperation(resourceType);
+			var isAnonymous = !IsAuthorizableObject(operationType);
+			var isCacheableQuery = IsCacheableQuery(operationType);
+			var requiresAuthorization = !isAnonymous && ImplementsAuthorizableOperation(operationType);
 
-			var grantDomain = DomainFeatureResolver.Resolve(resourceType);
-			var permissions = RequiredGrantCache.GetFor(resourceType);
-			var isSelfScoped = typeof(IGrantableSelfBase).IsAssignableFrom(resourceType);
+			var grantDomain = DomainFeatureResolver.Resolve(operationType);
+			var permissions = RequiredGrantCache.GetFor(operationType);
+			var isSelfScoped = typeof(IGrantableSelfBase).IsAssignableFrom(operationType);
 			var isGranted = isSelfScoped
-				|| typeof(IGrantableMutateBase).IsAssignableFrom(resourceType)
-				|| typeof(IGrantableLookupBase).IsAssignableFrom(resourceType)
-				|| typeof(IGrantableSearchBase).IsAssignableFrom(resourceType);
+				|| typeof(IGrantableMutateBase).IsAssignableFrom(operationType)
+				|| typeof(IGrantableLookupBase).IsAssignableFrom(operationType)
+				|| typeof(IGrantableSearchBase).IsAssignableFrom(operationType);
 
 			var grantableKind = isSelfScoped ? "Self"
-				: typeof(IGrantableMutateBase).IsAssignableFrom(resourceType) ? "Mutate"
-				: typeof(IGrantableLookupBase).IsAssignableFrom(resourceType) ? "Lookup"
-				: typeof(IGrantableSearchBase).IsAssignableFrom(resourceType) ? "Search"
+				: typeof(IGrantableMutateBase).IsAssignableFrom(operationType) ? "Mutate"
+				: typeof(IGrantableLookupBase).IsAssignableFrom(operationType) ? "Lookup"
+				: typeof(IGrantableSearchBase).IsAssignableFrom(operationType) ? "Search"
 				: (string?)null;
 
-			resources.Add(new ResourceTypeInfo(
-				ResourceType: resourceType,
-				DomainBoundary: GetDomainBoundary(resourceType),
-				ResourceKind: GetResourceKind(resourceType),
+			operations.Add(new OperationTypeInfo(
+				OperationType: operationType,
+				DomainBoundary: GetDomainBoundary(operationType),
+				OperationKind: GetOperationKind(operationType),
 				IsAnonymous: isAnonymous,
 				IsCacheableQuery: isCacheableQuery,
 				IsProtected: authorizerType != null,
@@ -241,7 +241,7 @@ public sealed class DomainModel : IDomainModel {
 			));
 		}
 
-		return resources.AsReadOnly();
+		return operations.AsReadOnly();
 	}
 
 	private static ReadOnlyCollection<AuthorizationRuleTypeInfo> BuildRules() {
@@ -256,8 +256,8 @@ public sealed class DomainModel : IDomainModel {
 
 		var rules = new HashSet<AuthorizationRuleTypeInfo>();
 		foreach (var authorizerType in authorizerTypes) {
-			var resourceType = GetResourceTypeFromAuthorizer(authorizerType) ?? typeof(MissingResource);
-			var ruleInfos = ExtractValidationRules(resourceType, authorizerType);
+			var operationType = GetResourceTypeFromAuthorizer(authorizerType) ?? typeof(MissingResource);
+			var ruleInfos = ExtractValidationRules(operationType, authorizerType);
 			rules.UnionWith(ruleInfos);
 		}
 
@@ -301,16 +301,16 @@ public sealed class DomainModel : IDomainModel {
 
 	#region Helpers
 
-	private static string GetDomainBoundary(Type resourceType) {
-		var resolved = DomainFeatureResolver.Resolve(resourceType);
+	private static string GetDomainBoundary(Type operationType) {
+		var resolved = DomainFeatureResolver.Resolve(operationType);
 		if (resolved is null) {
 			return "Other";
 		}
 		return char.ToUpperInvariant(resolved[0]) + resolved[1..];
 	}
 
-	private static string GetResourceKind(Type resourceType) {
-		var parts = resourceType.Namespace?.Split('.') ?? [];
+	private static string GetOperationKind(Type operationType) {
+		var parts = operationType.Namespace?.Split('.') ?? [];
 		return parts.LastOrDefault() ?? "Unknown";
 	}
 
@@ -369,7 +369,7 @@ public sealed class DomainModel : IDomainModel {
 		return description ?? $"Policy validator: {policy.PolicyName}";
 	}
 
-	private static List<AuthorizationRuleTypeInfo> ExtractValidationRules(Type resourceType, Type validatorType) {
+	private static List<AuthorizationRuleTypeInfo> ExtractValidationRules(Type operationType, Type validatorType) {
 		var rules = new List<AuthorizationRuleTypeInfo>();
 		try {
 			var validatorInstance = Activator.CreateInstance(validatorType);
@@ -385,7 +385,7 @@ public sealed class DomainModel : IDomainModel {
 						var validationLogic = GetValidationLogicDescription(validator);
 						var message = options.GetUnformattedErrorMessage() ?? "Default error message";
 						rules.Add(new AuthorizationRuleTypeInfo(
-							resourceType,
+							operationType,
 							validatorType,
 							propertyPath,
 							validationLogic,
@@ -397,7 +397,7 @@ public sealed class DomainModel : IDomainModel {
 				foreach (var rule in descriptor.Rules) {
 					if (rule is IIncludeRule) {
 						rules.Add(new AuthorizationRuleTypeInfo(
-							resourceType,
+							operationType,
 							validatorType,
 							rule.PropertyName ?? "AuthorizationContext",
 							"Included Validator",

@@ -13,7 +13,7 @@ public class AuthorizationConstraintAnalyzer(IDomainModel domainModel) : IDomain
 
 		public static IssueDefinition ConstraintSummary(int count) => new(
 			$"{count} authorization constraint(s) registered. These run in registration order " +
-			"as Stage 1, Step 1 of the authorization pipeline.",
+			"as Phase 1, Step 2 of the authorization pipeline.",
 			null);
 	}
 
@@ -23,8 +23,8 @@ public class AuthorizationConstraintAnalyzer(IDomainModel domainModel) : IDomain
 		var metrics = new Dictionary<string, int>();
 
 		var constraintTypes = domainModel.GetAuthorizationConstraintTypes();
-		var authorizableResources = domainModel.GetAuthorizableResources();
-		var authorizableCount = authorizableResources.Count(r => r.RequiresAuthorization);
+		var authorizableOperations = domainModel.GetAuthorizableOperations();
+		var authorizableCount = authorizableOperations.Count(r => r.RequiresAuthorization);
 
 		metrics[$"{MetricCategories.AuthorizationConstraints}ConstraintCount"] = constraintTypes.Count;
 		metrics[$"{MetricCategories.AuthorizationConstraints}AuthorizableOperationCount"] = authorizableCount;

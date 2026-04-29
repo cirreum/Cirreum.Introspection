@@ -7,31 +7,31 @@ using Cirreum.Introspection.Modeling;
 using Cirreum.Introspection.Modeling.Types;
 
 /// <summary>
-/// Analyzes granted resources and grant domain hygiene.
+/// Analyzes granted operations and grant domain hygiene.
 /// </summary>
-public class GrantedResourceAnalyzer(IDomainModel domainModel) : IDomainAnalyzer {
+public class GrantedOperationAnalyzer(IDomainModel domainModel) : IDomainAnalyzer {
 
-	public const string AnalyzerCategory = "Granted Resources";
+	public const string AnalyzerCategory = "Granted Operations";
 
 	public AnalysisReport Analyze() {
 
 		var issues = new List<AnalysisIssue>();
 		var metrics = new Dictionary<string, int>();
 
-		var allResources = domainModel.GetAllResources();
+		var allOperations = domainModel.GetAllOperations();
 
-		var grantedResources = allResources.Where(r => r.IsGranted).ToList();
-		var grantDomains = grantedResources
+		var grantedOperations = allOperations.Where(r => r.IsGranted).ToList();
+		var grantDomains = grantedOperations
 			.Where(r => r.GrantDomain is not null)
 			.Select(r => r.GrantDomain!)
 			.Distinct(StringComparer.OrdinalIgnoreCase)
 			.ToList();
 
 		// ──────────────────────────────────────────────
-		// 1. Granted resources without [RequiresGrant]
+		// 1. Granted operations without [RequiresGrant]
 		// ──────────────────────────────────────────────
 
-		var missingPermissions = grantedResources
+		var missingPermissions = grantedOperations
 			.Where(r => r.Permissions.Count == 0)
 			.ToList();
 
@@ -39,19 +39,19 @@ public class GrantedResourceAnalyzer(IDomainModel domainModel) : IDomainAnalyzer
 			issues.Add(new AnalysisIssue(
 				Category: AnalyzerCategory,
 				Severity: IssueSeverity.Warning,
-				Description: $"Found {missingPermissions.Count} granted resource(s) without [RequiresGrant]. " +
-					"These resources participate in the grant pipeline but have no permission gate, " +
+				Description: $"Found {missingPermissions.Count} granted operation(s) without [RequiresGrant]. " +
+					"These operations participate in the grant pipeline but have no permission gate, " +
 					"so grant evaluation cannot enforce access control.",
 				RelatedTypeNames: [.. missingPermissions.Select(TypeName)],
-				Recommendation: "Add [RequiresGrant(\"name\")] to each granted resource to define " +
+				Recommendation: "Add [RequiresGrant(\"name\")] to each granted operation to define " +
 					"the grant permission(s) required for access."));
 		}
 
 		// ──────────────────────────────────────────────
-		// 2. [RequiresGrant] on non-granted resources
+		// 2. [RequiresGrant] on non-granted operations
 		// ──────────────────────────────────────────────
 
-		var permissionsWithoutGrants = allResources
+		var permissionsWithoutGrants = allOperations
 			.Where(r => !r.IsGranted && r.Permissions.Count > 0)
 			.ToList();
 
@@ -59,20 +59,20 @@ public class GrantedResourceAnalyzer(IDomainModel domainModel) : IDomainAnalyzer
 			issues.Add(new AnalysisIssue(
 				Category: AnalyzerCategory,
 				Severity: IssueSeverity.Info,
-				Description: $"Found {permissionsWithoutGrants.Count} resource(s) with [RequiresGrant] " +
+				Description: $"Found {permissionsWithoutGrants.Count} operation(s) with [RequiresGrant] " +
 					"that do not implement a Granted interface. The declared permissions are available on " +
-					"AuthorizationContext.RequiredGrants for inspection in resource authorizers.",
+					"AuthorizationContext.RequiredGrants for inspection in operation authorizers.",
 				RelatedTypeNames: [.. permissionsWithoutGrants.Select(TypeName)],
 				Recommendation: "If grant-based access control is intended, add the appropriate Granted " +
-					"interface (e.g., IOwnerMutateOperation). Otherwise, ensure the resource authorizer " +
+					"interface (e.g., IOwnerMutateOperation). Otherwise, ensure the operation authorizer " +
 					"consumes RequiredGrants for authorization decisions."));
 		}
 
 		// ──────────────────────────────────────────────
-		// 3. Granted resources without a resource authorizer
+		// 3. Granted operations without a operation authorizer
 		// ──────────────────────────────────────────────
 
-		var grantedWithoutAuthorizer = grantedResources
+		var grantedWithoutAuthorizer = grantedOperations
 			.Where(r => !r.IsProtected)
 			.ToList();
 
@@ -80,11 +80,11 @@ public class GrantedResourceAnalyzer(IDomainModel domainModel) : IDomainAnalyzer
 			issues.Add(new AnalysisIssue(
 				Category: AnalyzerCategory,
 				Severity: IssueSeverity.Info,
-				Description: $"Found {grantedWithoutAuthorizer.Count} granted resource(s) without a " +
-					"resource authorizer (Stage 2). Grant evaluation (Stage 1) runs, but no " +
-					"resource-level authorization rules are applied.",
+				Description: $"Found {grantedWithoutAuthorizer.Count} granted operation(s) without a " +
+					"operation authorizer (Phase 2). Grant evaluation (Phase 1, Step 1) runs, but no " +
+					"operation-level authorization rules are applied.",
 				RelatedTypeNames: [.. grantedWithoutAuthorizer.Select(TypeName)],
-				Recommendation: "If these resources require resource-level authorization beyond grant " +
+				Recommendation: "If these operations require operation-level authorization beyond grant " +
 					"evaluation, add a AuthorizerBase<T> implementation. If grants-only " +
 					"authorization is intentional, this can be safely ignored."));
 		}
@@ -93,7 +93,7 @@ public class GrantedResourceAnalyzer(IDomainModel domainModel) : IDomainAnalyzer
 		// 4. Mixed authorization within a domain
 		// ──────────────────────────────────────────────
 
-		DetectMixedAuthorizationDomains(allResources, grantDomains, issues);
+		DetectMixedAuthorizationDomains(allOperations, grantDomains, issues);
 
 		// ──────────────────────────────────────────────
 		// 5. No IOperationGrantProvider registered
@@ -101,12 +101,12 @@ public class GrantedResourceAnalyzer(IDomainModel domainModel) : IDomainAnalyzer
 
 		var grantProviderRegistered = domainModel.IsOperationGrantProviderRegistered;
 
-		if (grantedResources.Count > 0 && !grantProviderRegistered) {
+		if (grantedOperations.Count > 0 && !grantProviderRegistered) {
 			issues.Add(new AnalysisIssue(
 				Category: AnalyzerCategory,
 				Severity: IssueSeverity.Error,
-				Description: $"Found {grantedResources.Count} granted resource(s) but no IOperationGrantProvider " +
-					"is registered. Grant evaluation (Stage 1) cannot run without a grant resolver.",
+				Description: $"Found {grantedOperations.Count} granted operation(s) but no IOperationGrantProvider " +
+					"is registered. Grant evaluation (Phase 1, Step 1) cannot run without a grant resolver.",
 				RelatedTypeNames: [],
 				Recommendation: "Register an IOperationGrantProvider implementation via " +
 					"services.AddOperationGrants<TResolver>() to enable grant-based access control."));
@@ -116,7 +116,7 @@ public class GrantedResourceAnalyzer(IDomainModel domainModel) : IDomainAnalyzer
 		// 6. Self-scoped operations summary
 		// ──────────────────────────────────────────────
 
-		var selfScoped = grantedResources.Where(r => r.IsSelfScoped).ToList();
+		var selfScoped = grantedOperations.Where(r => r.IsSelfScoped).ToList();
 
 		if (selfScoped.Count > 0) {
 			issues.Add(new AnalysisIssue(
@@ -152,7 +152,7 @@ public class GrantedResourceAnalyzer(IDomainModel domainModel) : IDomainAnalyzer
 		// 8. Cross-feature permissions
 		// ──────────────────────────────────────────────
 
-		var crossFeature = grantedResources
+		var crossFeature = grantedOperations
 			.Where(r => r.Permissions.Count >= 2)
 			.Where(r => r.Permissions.Select(p => p.Feature).Distinct(StringComparer.OrdinalIgnoreCase).Count() > 1)
 			.ToList();
@@ -161,11 +161,11 @@ public class GrantedResourceAnalyzer(IDomainModel domainModel) : IDomainAnalyzer
 			issues.Add(new AnalysisIssue(
 				Category: AnalyzerCategory,
 				Severity: IssueSeverity.Warning,
-				Description: $"Found {crossFeature.Count} resource(s) with [RequiresGrant] attributes " +
+				Description: $"Found {crossFeature.Count} operation(s) with [RequiresGrant] attributes " +
 					"spanning multiple features.",
 				RelatedTypeNames: [.. crossFeature.Select(TypeName)],
-				Recommendation: "All permissions on a granted resource should use the same feature. " +
-					"Cross-cutting concerns belong in Stage 2 resource authorizers or Stage 3 policies."));
+				Recommendation: "All permissions on a granted operation should use the same feature. " +
+					"Cross-cutting concerns belong in Phase 2 operation authorizers or Phase 3 policies."));
 		}
 
 		// ──────────────────────────────────────────────
@@ -177,17 +177,17 @@ public class GrantedResourceAnalyzer(IDomainModel domainModel) : IDomainAnalyzer
 		// UNSAFE: any other IGrantable*Base + ICacheableOperation — shared cache entry
 		//         spans callers with potentially different grant scopes, causing leaks.
 
-		var unsafeCacheableGrants = allResources
+		var unsafeCacheableGrants = allOperations
 			.Where(r => r.IsGranted && r.IsCacheableQuery)
 			.Where(r => !typeof(IOwnerCacheableLookupOperation<>)
-				.IsAssignableFromGenericInterface(r.ResourceType))
+				.IsAssignableFromGenericInterface(r.OperationType))
 			.ToList();
 
 		if (unsafeCacheableGrants.Count > 0) {
 			issues.Add(new AnalysisIssue(
 				Category: AnalyzerCategory,
 				Severity: IssueSeverity.Error,
-				Description: $"Found {unsafeCacheableGrants.Count} resource(s) combining ICacheableOperation " +
+				Description: $"Found {unsafeCacheableGrants.Count} operation(s) combining ICacheableOperation " +
 					"with a grant-aware interface other than IOwnerCacheableLookupOperation<T>. " +
 					"ICacheableOperation entries are shared across all callers; mixing with grant " +
 					"semantics can leak data to callers whose grant scope no longer covers the cached " +
@@ -203,28 +203,28 @@ public class GrantedResourceAnalyzer(IDomainModel domainModel) : IDomainAnalyzer
 		// Metrics
 		// ──────────────────────────────────────────────
 
-		var permissionCount = grantedResources
+		var permissionCount = grantedOperations
 			.SelectMany(r => r.Permissions)
 			.Select(p => p.ToString())
 			.Distinct(StringComparer.OrdinalIgnoreCase)
 			.Count();
 
-		metrics[$"{MetricCategories.GrantedResources}GrantedResourceCount"] = grantedResources.Count;
-		metrics[$"{MetricCategories.GrantedResources}GrantFeatureCount"] = grantDomains.Count;
-		metrics[$"{MetricCategories.GrantedResources}TotalPermissionCount"] = permissionCount;
-		metrics[$"{MetricCategories.GrantedResources}MissingPermissionCount"] = missingPermissions.Count;
-		metrics[$"{MetricCategories.GrantedResources}PermissionsWithoutGrantsCount"] = permissionsWithoutGrants.Count;
-		metrics[$"{MetricCategories.GrantedResources}GrantProviderRegistered"] = grantProviderRegistered ? 1 : 0;
-		metrics[$"{MetricCategories.GrantedResources}SelfScopedCount"] = selfScoped.Count;
-		metrics[$"{MetricCategories.GrantedResources}CrossFeaturePermissionCount"] = crossFeature.Count;
-		metrics[$"{MetricCategories.GrantedResources}UnsafeCacheableGrantCount"] = unsafeCacheableGrants.Count;
+		metrics[$"{MetricCategories.GrantedOperations}GrantedOperationCount"] = grantedOperations.Count;
+		metrics[$"{MetricCategories.GrantedOperations}GrantFeatureCount"] = grantDomains.Count;
+		metrics[$"{MetricCategories.GrantedOperations}TotalPermissionCount"] = permissionCount;
+		metrics[$"{MetricCategories.GrantedOperations}MissingPermissionCount"] = missingPermissions.Count;
+		metrics[$"{MetricCategories.GrantedOperations}PermissionsWithoutGrantsCount"] = permissionsWithoutGrants.Count;
+		metrics[$"{MetricCategories.GrantedOperations}GrantProviderRegistered"] = grantProviderRegistered ? 1 : 0;
+		metrics[$"{MetricCategories.GrantedOperations}SelfScopedCount"] = selfScoped.Count;
+		metrics[$"{MetricCategories.GrantedOperations}CrossFeaturePermissionCount"] = crossFeature.Count;
+		metrics[$"{MetricCategories.GrantedOperations}UnsafeCacheableGrantCount"] = unsafeCacheableGrants.Count;
 
 		// Summary
-		if (grantedResources.Count > 0) {
+		if (grantedOperations.Count > 0) {
 			issues.Add(new AnalysisIssue(
 				Category: AnalyzerCategory,
 				Severity: IssueSeverity.Info,
-				Description: $"Grant system active: {grantedResources.Count} granted resource(s) across " +
+				Description: $"Grant system active: {grantedOperations.Count} granted operation(s) across " +
 					$"{grantDomains.Count} domain(s) using {permissionCount} distinct permission(s).",
 				RelatedTypeNames: grantDomains));
 		}
@@ -234,11 +234,11 @@ public class GrantedResourceAnalyzer(IDomainModel domainModel) : IDomainAnalyzer
 	}
 
 	/// <summary>
-	/// Detects domain boundaries where some authorizable resources are granted and others
+	/// Detects domain boundaries where some authorizable operations are granted and others
 	/// are not — may indicate an incomplete migration to grants.
 	/// </summary>
 	private static void DetectMixedAuthorizationDomains(
-		IReadOnlyList<ResourceTypeInfo> allResources,
+		IReadOnlyList<OperationTypeInfo> allOperations,
 		List<string> grantDomains,
 		List<AnalysisIssue> issues) {
 
@@ -246,9 +246,9 @@ public class GrantedResourceAnalyzer(IDomainModel domainModel) : IDomainAnalyzer
 			return;
 		}
 
-		// Group authorizable resources by DomainBoundary, then check if the boundary
-		// has both granted and non-granted resources
-		var authorizableByBoundary = allResources
+		// Group authorizable operations by DomainBoundary, then check if the boundary
+		// has both granted and non-granted operations
+		var authorizableByBoundary = allOperations
 			.Where(r => r.RequiresAuthorization)
 			.GroupBy(r => r.DomainBoundary, StringComparer.OrdinalIgnoreCase);
 
@@ -261,19 +261,19 @@ public class GrantedResourceAnalyzer(IDomainModel domainModel) : IDomainAnalyzer
 					Category: AnalyzerCategory,
 					Severity: IssueSeverity.Info,
 					Description: $"Domain boundary '{group.Key}' has {granted.Count} granted and " +
-						$"{nonGranted.Count} non-granted authorizable resource(s). " +
+						$"{nonGranted.Count} non-granted authorizable operation(s). " +
 						"This may indicate an incomplete migration to grants.",
 					RelatedTypeNames: [.. nonGranted.Select(TypeName)],
-					Recommendation: "If all resources in this domain should use grant-based access control, " +
-						"add the appropriate Granted interface to the remaining resources. If the mix is " +
+					Recommendation: "If all operations in this domain should use grant-based access control, " +
+						"add the appropriate Granted interface to the remaining operations. If the mix is " +
 						"intentional (e.g., some operations are role-only), this can be safely ignored."));
 			}
 		}
 
 	}
 
-	private static string TypeName(ResourceTypeInfo r) =>
-		r.ResourceType.FullName ?? r.ResourceType.Name;
+	private static string TypeName(OperationTypeInfo r) =>
+		r.OperationType.FullName ?? r.OperationType.Name;
 
 }
 

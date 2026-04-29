@@ -3,11 +3,11 @@ namespace Cirreum.Introspection.Analyzers;
 using Cirreum.Introspection.Modeling;
 
 /// <summary>
-/// Analyzes anonymous resources and detects security gaps.
+/// Analyzes anonymous operations and detects security gaps.
 /// </summary>
-public class AnonymousResourceAnalyzer(IDomainModel domainModel) : IDomainAnalyzer {
+public class AnonymousOperationAnalyzer(IDomainModel domainModel) : IDomainAnalyzer {
 
-	public const string AnalyzerCategory = "Anonymous Resources";
+	public const string AnalyzerCategory = "Anonymous Operations";
 
 	private static readonly string[] SuspiciousWords = [
 		"delete", "remove", "admin", "update", "modify", "create", "getall",
@@ -17,25 +17,25 @@ public class AnonymousResourceAnalyzer(IDomainModel domainModel) : IDomainAnalyz
 
 	private static class Issues {
 
-		public static IssueDefinition AnonymousResourcesFound(int count, int maxShown) {
+		public static IssueDefinition AnonymousOperationsFound(int count, int maxShown) {
 			var description = count > maxShown
-				? $"Found {count} anonymous resources (don't require authorization). Showing first {maxShown}."
-				: $"Found {count} anonymous resource(s) (don't require authorization).";
+				? $"Found {count} anonymous operations (don't require authorization). Showing first {maxShown}."
+				: $"Found {count} anonymous operation(s) (don't require authorization).";
 
 			var recommendation = count == 1
-				? "Review this resource to confirm it should be publicly accessible without authentication."
-				: "Review these resources to confirm they should be publicly accessible without authentication.";
+				? "Review this operation to confirm it should be publicly accessible without authentication."
+				: "Review these operations to confirm they should be publicly accessible without authentication.";
 
 			return new(description, recommendation);
 		}
 
-		public static IssueDefinition SuspiciousAnonymousResources(int count) {
+		public static IssueDefinition SuspiciousAnonymousOperations(int count) {
 			var recommendation = count == 1
 				? "This operation has a name suggesting it may need protection. Review it and add authorization if it performs sensitive actions."
 				: "These operations have names suggesting they may need protection (Delete, Admin, Update, etc.). Review each one and add authorization if they perform sensitive actions.";
 
 			return new(
-				$"Found {count} anonymous resource(s) with sensitive-sounding names (Delete, Admin, Update, etc.)",
+				$"Found {count} anonymous operation(s) with sensitive-sounding names (Delete, Admin, Update, etc.)",
 				recommendation);
 		}
 	}
@@ -45,24 +45,24 @@ public class AnonymousResourceAnalyzer(IDomainModel domainModel) : IDomainAnalyz
 		var issues = new List<AnalysisIssue>();
 		var metrics = new Dictionary<string, int>();
 
-		var anonymousResources = domainModel.GetAnonymousResources();
+		var anonymousOperations = domainModel.GetAnonymousOperations();
 
-		var suspiciousAnonymous = anonymousResources
-			.Where(r => IsPotentiallySecuritySensitive(r.ResourceType.Name))
+		var suspiciousAnonymous = anonymousOperations
+			.Where(r => IsPotentiallySecuritySensitive(r.OperationType.Name))
 			.ToList();
 
-		metrics[$"{MetricCategories.AnonymousResources}AnonymousResourceCount"] = anonymousResources.Count;
-		metrics[$"{MetricCategories.AnonymousResources}SuspiciousResourceCount"] = suspiciousAnonymous.Count;
+		metrics[$"{MetricCategories.AnonymousOperations}AnonymousOperationCount"] = anonymousOperations.Count;
+		metrics[$"{MetricCategories.AnonymousOperations}SuspiciousOperationCount"] = suspiciousAnonymous.Count;
 
-		if (anonymousResources.Count > 0) {
+		if (anonymousOperations.Count > 0) {
 			const int maxTypesToInclude = 5;
 
-			var typeSample = anonymousResources
+			var typeSample = anonymousOperations
 				.Take(maxTypesToInclude)
-				.Select(r => r.ResourceType.FullName ?? r.ResourceType.Name)
+				.Select(r => r.OperationType.FullName ?? r.OperationType.Name)
 				.ToList();
 
-			var issue = Issues.AnonymousResourcesFound(anonymousResources.Count, maxTypesToInclude);
+			var issue = Issues.AnonymousOperationsFound(anonymousOperations.Count, maxTypesToInclude);
 			issues.Add(new AnalysisIssue(
 				Category: AnalyzerCategory,
 				Severity: IssueSeverity.Info,
@@ -72,12 +72,12 @@ public class AnonymousResourceAnalyzer(IDomainModel domainModel) : IDomainAnalyz
 		}
 
 		if (suspiciousAnonymous.Count > 0) {
-			var issue = Issues.SuspiciousAnonymousResources(suspiciousAnonymous.Count);
+			var issue = Issues.SuspiciousAnonymousOperations(suspiciousAnonymous.Count);
 			issues.Add(new AnalysisIssue(
 				Category: AnalyzerCategory,
 				Severity: IssueSeverity.Warning,
 				Description: issue.Description,
-				RelatedTypeNames: [.. suspiciousAnonymous.Select(r => r.ResourceType.FullName ?? r.ResourceType.Name)],
+				RelatedTypeNames: [.. suspiciousAnonymous.Select(r => r.OperationType.FullName ?? r.OperationType.Name)],
 				Recommendation: issue.Recommendation));
 		}
 

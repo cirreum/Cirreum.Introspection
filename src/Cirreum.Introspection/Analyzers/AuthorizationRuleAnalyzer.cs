@@ -15,17 +15,17 @@ public class AuthorizationRuleAnalyzer(IDomainModel domainModel) : IDomainAnalyz
 
 		public static IssueDefinition OrphanedAuthorizers(int count) {
 			var recommendation = count == 1
-				? "This authorizer references a resource that doesn't exist. Remove it or fix the resource type reference."
-				: "These authorizers reference resources that don't exist. Remove them or fix the resource type references.";
+				? "This authorizer references a operation that doesn't exist. Remove it or fix the operation type reference."
+				: "These authorizers reference operations that don't exist. Remove them or fix the operation type references.";
 
 			return new(
-				$"Found {count} authorizer(s) with no matching resource type (orphaned authorizers)",
+				$"Found {count} authorizer(s) with no matching operation type (orphaned authorizers)",
 				recommendation);
 		}
 
-		public static IssueDefinition ResourcesWithOnlyRoleChecks(int count) => new(
-			$"Found {count} resource(s) with only role-based authorization checks",
-			"Role-based authorization is valid. Consider adding resource-specific checks if finer-grained control is needed.");
+		public static IssueDefinition OperationsWithOnlyRoleChecks(int count) => new(
+			$"Found {count} operation(s) with only role-based authorization checks",
+			"Role-based authorization is valid. Consider adding operation-specific checks if finer-grained control is needed.");
 
 	}
 
@@ -38,18 +38,18 @@ public class AuthorizationRuleAnalyzer(IDomainModel domainModel) : IDomainAnalyz
 		var issues = new List<AnalysisIssue>();
 		var metrics = new Dictionary<string, int>();
 		var rules = domainModel.GetAuthorizationRules();
-		var rulesByResource = rules.GroupBy(r => r.ResourceType).ToList();
-		var rulesWithMissingResource = rules.Where(r => r.ResourceType == typeof(MissingResource)).ToList();
+		var rulesByOperation = rules.GroupBy(r => r.OperationType).ToList();
+		var rulesWithMissingOperation = rules.Where(r => r.OperationType == typeof(MissingResource)).ToList();
 
 		// Capture metrics for this analyzer
 		metrics[$"{MetricCategories.AuthorizationRules}AuthorizerCount"] = rules.Select(r => r.AuthorizerType).Distinct().Count();
-		metrics[$"{MetricCategories.AuthorizationRules}ResourceCount"] = rulesByResource.Count(g => g.Key != typeof(MissingResource));
-		metrics[$"{MetricCategories.AuthorizationRules}OrphanedAuthorizerCount"] = rulesWithMissingResource.Select(r => r.AuthorizerType).Distinct().Count();
+		metrics[$"{MetricCategories.AuthorizationRules}OperationCount"] = rulesByOperation.Count(g => g.Key != typeof(MissingResource));
+		metrics[$"{MetricCategories.AuthorizationRules}OrphanedAuthorizerCount"] = rulesWithMissingOperation.Select(r => r.AuthorizerType).Distinct().Count();
 		metrics[$"{MetricCategories.AuthorizationRules}RuleCount"] = rules.Count;
 
-		// Check for authorizers with a missing/orphaned resource (critical error)
-		if (rulesWithMissingResource.Count > 0) {
-			var orphanedAuthorizers = rulesWithMissingResource
+		// Check for authorizers with a missing/orphaned operation (critical error)
+		if (rulesWithMissingOperation.Count > 0) {
+			var orphanedAuthorizers = rulesWithMissingOperation
 				.Select(r => r.AuthorizerType)
 				.Distinct()
 				.ToList();
@@ -62,8 +62,8 @@ public class AuthorizationRuleAnalyzer(IDomainModel domainModel) : IDomainAnalyz
 				Recommendation: issue.Recommendation));
 		}
 
-		// Check for resources with only role-based checks (informational)
-		var resourcesWithOnlyRoleChecks = rulesByResource
+		// Check for operations with only role-based checks (informational)
+		var operationsWithOnlyRoleChecks = rulesByOperation
 				.Where(g => g.Key != typeof(MissingResource))
 				.Where(g => g.All(r =>
 					r.ValidationLogic.Contains("HasRole") ||
@@ -71,13 +71,13 @@ public class AuthorizationRuleAnalyzer(IDomainModel domainModel) : IDomainAnalyz
 					r.ValidationLogic.Contains("HasAllRoles")))
 				.ToList();
 
-		if (resourcesWithOnlyRoleChecks.Count != 0) {
-			var issue = Issues.ResourcesWithOnlyRoleChecks(resourcesWithOnlyRoleChecks.Count);
+		if (operationsWithOnlyRoleChecks.Count != 0) {
+			var issue = Issues.OperationsWithOnlyRoleChecks(operationsWithOnlyRoleChecks.Count);
 			issues.Add(new AnalysisIssue(
 				Category: AnalyzerCategory,
 				Severity: IssueSeverity.Info,
 				Description: issue.Description,
-				RelatedTypeNames: [.. resourcesWithOnlyRoleChecks.Select(g => g.Key.FullName ?? g.Key.Name)],
+				RelatedTypeNames: [.. operationsWithOnlyRoleChecks.Select(g => g.Key.FullName ?? g.Key.Name)],
 				Recommendation: issue.Recommendation));
 		}
 

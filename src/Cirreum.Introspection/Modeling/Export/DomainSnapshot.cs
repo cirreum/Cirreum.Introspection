@@ -51,7 +51,7 @@ public record DomainSnapshot {
 	public required DomainRuntimeType Runtime { get; init; }
 
 	/// <summary>
-	/// The complete domain catalog containing all resources organized by domain and kind.
+	/// The complete domain catalog containing all operations organized by domain and kind.
 	/// </summary>
 	public required DomainCatalog Catalog { get; init; }
 
@@ -81,8 +81,8 @@ public record DomainSnapshot {
 	public required string RoleHierarchyDiagram { get; init; }
 
 	/// <summary>
-	/// Summary of registered grant domains with their permissions and resource counts.
-	/// Empty when no granted resources exist.
+	/// Summary of registered grant domains with their permissions and operation counts.
+	/// Empty when no granted operations exist.
 	/// </summary>
 	public required IReadOnlyList<GrantDomainInfo> GrantDomains { get; init; }
 
@@ -140,10 +140,10 @@ public record DomainSnapshot {
 	}
 
 	private static List<GrantDomainInfo> BuildGrantDomains(DomainCatalog catalog) {
-		var grantedResources = catalog.AllResources
+		var grantedOperations = catalog.AllOperations
 			.Where(r => r.IsGranted && r.GrantDomain is not null);
 
-		var byDomain = grantedResources
+		var byDomain = grantedOperations
 			.GroupBy(r => r.GrantDomain!)
 			.OrderBy(g => g.Key, StringComparer.Ordinal);
 
@@ -158,7 +158,7 @@ public record DomainSnapshot {
 			result.Add(new GrantDomainInfo(
 				Domain: group.Key,
 				Permissions: permissions,
-				GrantedResourceCount: group.Count()
+				GrantedOperationCount: group.Count()
 			));
 		}
 		return result;

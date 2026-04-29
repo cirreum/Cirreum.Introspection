@@ -1,7 +1,7 @@
 namespace Cirreum.Introspection.Modeling.Export;
 
 /// <summary>
-/// Aggregate metrics for the entire resource catalog.
+/// Aggregate metrics for the entire operation catalog.
 /// </summary>
 public record CatalogMetrics {
 	/// <summary>
@@ -10,24 +10,24 @@ public record CatalogMetrics {
 	public int TotalDomains { get; init; }
 
 	/// <summary>
-	/// Total number of distinct resource kinds.
+	/// Total number of distinct operation kinds.
 	/// </summary>
 	public int TotalKinds { get; init; }
 
 	/// <summary>
-	/// Total number of resources.
+	/// Total number of operations.
 	/// </summary>
-	public int TotalResources { get; init; }
+	public int TotalOperations { get; init; }
 
 	/// <summary>
-	/// Number of protected resources.
+	/// Number of protected operations.
 	/// </summary>
-	public int ProtectedResources { get; init; }
+	public int ProtectedOperations { get; init; }
 
 	/// <summary>
-	/// Number of anonymous resources.
+	/// Number of anonymous operations.
 	/// </summary>
-	public int AnonymousResources { get; init; }
+	public int AnonymousOperations { get; init; }
 
 	/// <summary>
 	/// Overall authorization coverage percentage.

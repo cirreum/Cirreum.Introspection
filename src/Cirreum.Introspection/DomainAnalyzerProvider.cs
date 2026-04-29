@@ -32,9 +32,9 @@ public static class DomainAnalyzerProvider {
 		return [
 			new AuthorizationRuleAnalyzer(domainModel),
 			new RoleHierarchyAnalyzer(roleRegistry),
-			new AnonymousResourceAnalyzer(domainModel),
-			new GrantedResourceAnalyzer(domainModel),
-			new AuthorizableResourceAnalyzer(domainModel),
+			new AnonymousOperationAnalyzer(domainModel),
+			new GrantedOperationAnalyzer(domainModel),
+			new AuthorizableOperationAnalyzer(domainModel),
 			new AuthorizationConstraintAnalyzer(domainModel),
 			new PolicyValidatorAnalyzer(domainModel, domainEnvironment),
 			new ProtectedResourceAnalyzer(domainModel),

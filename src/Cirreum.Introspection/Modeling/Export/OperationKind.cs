@@ -1,30 +1,30 @@
 namespace Cirreum.Introspection.Modeling.Export;
 /// <summary>
-/// A resource kind within a domain (e.g., "Commands", "Queries").
+/// An operation kind within a domain (e.g., "Commands", "Queries").
 /// </summary>
-public record ResourceKind {
+public record OperationKind {
 	/// <summary>
-	/// The name of the resource kind.
+	/// The name of the operation kind.
 	/// </summary>
 	public string Name { get; init; } = string.Empty;
 
 	/// <summary>
-	/// All resources of this kind.
+	/// All operations of this kind.
 	/// </summary>
-	public IReadOnlyList<ResourceInfo> Resources { get; init; } = [];
+	public IReadOnlyList<OperationInfo> Operations { get; init; } = [];
 
 	/// <summary>
-	/// Total resources of this kind.
+	/// Total operations of this kind.
 	/// </summary>
 	public int TotalCount { get; init; }
 
 	/// <summary>
-	/// Protected resources of this kind.
+	/// Protected operations of this kind.
 	/// </summary>
 	public int ProtectedCount { get; init; }
 
 	/// <summary>
-	/// Anonymous resources of this kind.
+	/// Anonymous operations of this kind.
 	/// </summary>
 	public int AnonymousCount { get; init; }
 

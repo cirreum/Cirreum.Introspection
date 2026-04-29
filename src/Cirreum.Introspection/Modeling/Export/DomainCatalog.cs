@@ -1,12 +1,12 @@
 namespace Cirreum.Introspection.Modeling.Export;
 /// <summary>
-/// The complete catalog of domain resources organized hierarchically.
-/// Structure: Domain -> Kind -> Resource
+/// The complete catalog of domain operations organized hierarchically.
+/// Structure: Domain -> Kind -> Operation
 /// </summary>
 public record DomainCatalog {
 
 	/// <summary>
-	/// Domain areas containing resources (e.g., "Customers", "Orders", "Inventory").
+	/// Domain areas containing operations (e.g., "Customers", "Orders", "Inventory").
 	/// </summary>
 	public IReadOnlyDictionary<string, DomainBoundary> Domains { get; init; } = new Dictionary<string, DomainBoundary>();
 
@@ -16,17 +16,17 @@ public record DomainCatalog {
 	public CatalogMetrics Metrics { get; init; } = new();
 
 	/// <summary>
-	/// All resources as a flat list (convenience accessor).
+	/// All operations as a flat list (convenience accessor).
 	/// </summary>
-	public IReadOnlyList<ResourceInfo> AllResources { get; init; } = [];
+	public IReadOnlyList<OperationInfo> AllOperations { get; init; } = [];
 
 	/// <summary>
-	/// Builds a catalog from a flat list of resources.
+	/// Builds a catalog from a flat list of operations.
 	/// </summary>
-	public static DomainCatalog Build(List<ResourceInfo> resourceList) {
+	public static DomainCatalog Build(List<OperationInfo> operationList) {
 
 		// Group by domain -> kind
-		var domainGroups = resourceList
+		var domainGroups = operationList
 			.GroupBy(r => r.DomainBoundary)
 			.OrderBy(g => g.Key);
 
@@ -34,66 +34,66 @@ public record DomainCatalog {
 
 		foreach (var domainGroup in domainGroups) {
 			var domainName = domainGroup.Key;
-			var domainResources = domainGroup.ToList();
+			var domainOperations = domainGroup.ToList();
 
-			var kindGroups = domainResources
-				.GroupBy(r => r.ResourceKind)
+			var kindGroups = domainOperations
+				.GroupBy(r => r.OperationKind)
 				.OrderBy(g => g.Key);
 
-			var kinds = new Dictionary<string, ResourceKind>();
+			var kinds = new Dictionary<string, OperationKind>();
 
 			foreach (var kindGroup in kindGroups) {
 				var kindName = kindGroup.Key;
-				var kindResources = kindGroup.ToList();
+				var kindOperations = kindGroup.ToList();
 
-				kinds[kindName] = new ResourceKind {
+				kinds[kindName] = new OperationKind {
 					Name = kindName,
-					Resources = kindResources.AsReadOnly(),
-					TotalCount = kindResources.Count,
-					ProtectedCount = kindResources.Count(r => r.IsProtected),
-					AnonymousCount = kindResources.Count(r => r.IsAnonymous),
-					CoveragePercentage = CalculateCoveragePercentage(kindResources)
+					Operations = kindOperations.AsReadOnly(),
+					TotalCount = kindOperations.Count,
+					ProtectedCount = kindOperations.Count(r => r.IsProtected),
+					AnonymousCount = kindOperations.Count(r => r.IsAnonymous),
+					CoveragePercentage = CalculateCoveragePercentage(kindOperations)
 				};
 			}
 
 			domains[domainName] = new DomainBoundary {
 				Name = domainName,
 				Kinds = kinds,
-				TotalCount = domainResources.Count,
-				ProtectedCount = domainResources.Count(r => r.IsProtected),
-				AnonymousCount = domainResources.Count(r => r.IsAnonymous),
-				CoveragePercentage = CalculateCoveragePercentage(domainResources)
+				TotalCount = domainOperations.Count,
+				ProtectedCount = domainOperations.Count(r => r.IsProtected),
+				AnonymousCount = domainOperations.Count(r => r.IsAnonymous),
+				CoveragePercentage = CalculateCoveragePercentage(domainOperations)
 			};
 		}
 
-		var totalResources = resourceList.Count;
-		var protectedResources = resourceList.Count(r => r.IsProtected);
-		var anonymousResources = resourceList.Count(r => r.IsAnonymous);
+		var totalOperations = operationList.Count;
+		var protectedOperations = operationList.Count(r => r.IsProtected);
+		var anonymousOperations = operationList.Count(r => r.IsAnonymous);
 
 		return new DomainCatalog {
 			Domains = domains,
-			AllResources = resourceList.AsReadOnly(),
+			AllOperations = operationList.AsReadOnly(),
 			Metrics = new CatalogMetrics {
 				TotalDomains = domains.Count,
 				TotalKinds = domains.Values.SelectMany(d => d.Kinds.Keys).Distinct().Count(),
-				TotalResources = totalResources,
-				ProtectedResources = protectedResources,
-				AnonymousResources = anonymousResources,
-				OverallCoveragePercentage = CalculateCoveragePercentage(resourceList)
+				TotalOperations = totalOperations,
+				ProtectedOperations = protectedOperations,
+				AnonymousOperations = anonymousOperations,
+				OverallCoveragePercentage = CalculateCoveragePercentage(operationList)
 			}
 		};
 	}
 
 	/// <summary>
 	/// Calculates coverage as: protected / (total - anonymous).
-	/// Anonymous resources don't need protection, so they're excluded from the denominator.
+	/// Anonymous operations don't need protection, so they're excluded from the denominator.
 	/// </summary>
-	private static int CalculateCoveragePercentage(IReadOnlyList<ResourceInfo> resources) {
-		var authorizableCount = resources.Count(r => !r.IsAnonymous);
+	private static int CalculateCoveragePercentage(IReadOnlyList<OperationInfo> operations) {
+		var authorizableCount = operations.Count(r => !r.IsAnonymous);
 		if (authorizableCount == 0) {
-			return 100; // No authorizable resources = 100% coverage
+			return 100; // No authorizable operations = 100% coverage
 		}
-		var protectedCount = resources.Count(r => r.IsProtected);
+		var protectedCount = operations.Count(r => r.IsProtected);
 		return (int)((double)protectedCount / authorizableCount * 100);
 	}
 

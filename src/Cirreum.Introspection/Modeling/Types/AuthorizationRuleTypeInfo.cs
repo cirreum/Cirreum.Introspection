@@ -7,7 +7,7 @@ using Cirreum.Introspection.Modeling.Export;
 /// Use AuthorizationRuleInfo for serialization/public API.
 /// </summary>
 public sealed record AuthorizationRuleTypeInfo(
-	Type ResourceType,
+	Type OperationType,
 	Type AuthorizerType,
 	string PropertyPath,
 	string ValidationLogic,
@@ -17,8 +17,8 @@ public sealed record AuthorizationRuleTypeInfo(
 	/// Converts to the serializable AuthorizationRuleInfo type.
 	/// </summary>
 	public AuthorizationRuleInfo ToRuleInfo() => new(
-		ResourceTypeName: this.ResourceType.Name,
-		ResourceTypeFullName: this.ResourceType.FullName ?? this.ResourceType.Name,
+		OperationTypeName: this.OperationType.Name,
+		OperationTypeFullName: this.OperationType.FullName ?? this.OperationType.Name,
 		AuthorizerTypeName: this.AuthorizerType.Name,
 		AuthorizerTypeFullName: this.AuthorizerType.FullName ?? this.AuthorizerType.Name,
 		PropertyPath: this.PropertyPath,

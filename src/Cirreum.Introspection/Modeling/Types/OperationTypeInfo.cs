@@ -5,12 +5,12 @@ using Cirreum.Introspection.Modeling.Export;
 
 /// <summary>
 /// Internal type used during analysis that includes CLR Type references.
-/// Use ResourceInfo for serialization/public API.
+/// Use OperationInfo for serialization/public API.
 /// </summary>
-public sealed record ResourceTypeInfo(
-	Type ResourceType,
+public sealed record OperationTypeInfo(
+	Type OperationType,
 	string DomainBoundary,
-	string ResourceKind,
+	string OperationKind,
 	bool IsAnonymous,
 	bool IsCacheableQuery,
 	bool IsProtected,
@@ -24,13 +24,13 @@ public sealed record ResourceTypeInfo(
 	PermissionSet Permissions = null!
 ) {
 	/// <summary>
-	/// Converts to the serializable ResourceInfo type.
+	/// Converts to the serializable OperationInfo type.
 	/// </summary>
-	public ResourceInfo ToResourceInfo() => new(
-		ResourceName: this.ResourceType.Name,
-		ResourceFullName: this.ResourceType.FullName ?? this.ResourceType.Name,
+	public OperationInfo ToOperationInfo() => new(
+		OperationName: this.OperationType.Name,
+		OperationFullName: this.OperationType.FullName ?? this.OperationType.Name,
 		DomainBoundary: this.DomainBoundary,
-		ResourceKind: this.ResourceKind,
+		OperationKind: this.OperationKind,
 		IsAnonymous: this.IsAnonymous,
 		IsCacheableQuery: this.IsCacheableQuery,
 		IsProtected: this.IsProtected,

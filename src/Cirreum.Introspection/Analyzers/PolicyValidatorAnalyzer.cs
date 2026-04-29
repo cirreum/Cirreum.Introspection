@@ -48,8 +48,8 @@ public class PolicyValidatorAnalyzer(
 			"Consider consolidating these policies or ensure they have different order values for predictable behavior.");
 
 		public static IssueDefinition UnusedAttributePolicy(string policyName, string attributeName) => new(
-			$"Attribute policy '{policyName}' targets attribute '{attributeName}' but no resources use this attribute",
-			"Either apply this attribute to resources that need this policy, or remove the unused policy validator.");
+			$"Attribute policy '{policyName}' targets attribute '{attributeName}' but no operations use this attribute",
+			"Either apply this attribute to operations that need this policy, or remove the unused policy validator.");
 	}
 
 	public AnalysisReport Analyze() {
@@ -181,14 +181,14 @@ public class PolicyValidatorAnalyzer(
 		var issues = new List<AnalysisIssue>();
 
 		var attributePolicies = policyRules.Where(p => p.IsAttributeBased && p.TargetAttributeType is not null);
-		var authorizableResources = domainModel.GetAuthorizableResources();
+		var authorizableOperations = domainModel.GetAuthorizableOperations();
 
 		foreach (var policy in attributePolicies) {
 			var attributeType = policy.TargetAttributeType!;
-			var anyResourceUsesAttribute = authorizableResources
-				.Any(r => r.ResourceType.GetCustomAttributes(attributeType, false).Length != 0);
+			var anyOperationUsesAttribute = authorizableOperations
+				.Any(r => r.OperationType.GetCustomAttributes(attributeType, false).Length != 0);
 
-			if (!anyResourceUsesAttribute) {
+			if (!anyOperationUsesAttribute) {
 				var issue = Issues.UnusedAttributePolicy(policy.PolicyName, attributeType.Name);
 				issues.Add(new AnalysisIssue(
 					Category: AnalyzerCategory,

@@ -22,7 +22,7 @@ using System.Text;
 /// <list type="bullet">
 /// <item><description>Authentication check as the first gate</description></item>
 /// <item><description>Role resolution including inheritance</description></item>
-/// <item><description>Resource and policy validator execution order</description></item>
+/// <item><description>Operation and policy validator execution order</description></item>
 /// <item><description>Success and failure paths with appropriate exceptions</description></item>
 /// </list>
 /// </para>
@@ -78,7 +78,7 @@ public static class AuthorizationFlowRenderer {
 		sb.AppendLine("   YES");
 		sb.AppendLine("    |");
 		sb.AppendLine("    v");
-		sb.AppendLine("{Any Validators?} (Resource or Policy)");
+		sb.AppendLine("{Any Validators?} (Operation or Policy)");
 		sb.AppendLine("    |-- NO --> [InvalidOperationException: No Protection]");
 		sb.AppendLine("    |");
 		sb.AppendLine("   YES");
@@ -99,7 +99,7 @@ public static class AuthorizationFlowRenderer {
 		sb.AppendLine("[Create Authorization Context]");
 		sb.AppendLine("    |");
 		sb.AppendLine("    v");
-		sb.AppendLine("[Run Resource Validators] (collect failures)");
+		sb.AppendLine("[Run Operation Validators] (collect failures)");
 		sb.AppendLine("    |");
 		sb.AppendLine("    v");
 		sb.AppendLine("[Run Applicable Policy Validators in Order] (collect failures)");
@@ -137,7 +137,7 @@ public static class AuthorizationFlowRenderer {
 	/// <item><description>Protection Check - Ensures validators exist</description></item>
 	/// <item><description>Role Check - Verifies user has assigned roles</description></item>
 	/// <item><description>Role Resolution - Resolves effective roles via inheritance</description></item>
-	/// <item><description>Validation - Runs resource and policy validators, collecting all failures</description></item>
+	/// <item><description>Validation - Runs operation and policy validators, collecting all failures</description></item>
 	/// <item><description>Access Decision - Grants access only if no failures</description></item>
 	/// </list>
 	/// </para>
@@ -169,7 +169,7 @@ public static class AuthorizationFlowRenderer {
 		sb.AppendLine();
 		sb.AppendLine("    %% Context and Validation");
 		sb.AppendLine("    I --> J[Create Authorization Context]");
-		sb.AppendLine("    J --> K[Run Resource Validators]");
+		sb.AppendLine("    J --> K[Run Operation Validators]");
 		sb.AppendLine("    K --> L[Run Applicable Policy<br/>Validators in Order]");
 		sb.AppendLine();
 		sb.AppendLine("    %% Access Decision");
