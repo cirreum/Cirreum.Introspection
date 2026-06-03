@@ -8,7 +8,13 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<PackageReference Include="Cirreum.Core" Version="5.2.0" />
+		<!--
+			Foundation-reset cutover: the legacy Cirreum.Core 5.2.0 split into Kernel +
+			Common + Shared; reference the local projects directly.
+		-->
+		<ProjectReference Include="..\..\..\..\Base\Cirreum.Kernel\src\Cirreum.Kernel\Cirreum.Kernel.csproj" />
+		<ProjectReference Include="..\..\..\..\Common\Cirreum.Common\src\Cirreum.Common\Cirreum.Common.csproj" />
+		<ProjectReference Include="..\..\..\..\Core\Cirreum.Shared\src\Cirreum.Shared\Cirreum.Shared.csproj" />
 	</ItemGroup>
 
 </Project>
