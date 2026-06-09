@@ -9,12 +9,11 @@
 
 	<ItemGroup>
 		<!--
-			Foundation-reset cutover: the legacy Cirreum.Core 5.2.0 split into Kernel +
-			Common + Shared; reference the local projects directly.
+			Foundation-reset cutover: the legacy Cirreum.Core 5.2.0 split into the published
+			Kernel / Contracts / Domain triad. Domain is referenced directly; Contracts + Kernel
+			flow transitively (Domain → Contracts → Kernel).
 		-->
-		<ProjectReference Include="..\..\..\..\Base\Cirreum.Kernel\src\Cirreum.Kernel\Cirreum.Kernel.csproj" />
-		<ProjectReference Include="..\..\..\..\Common\Cirreum.Common\src\Cirreum.Common\Cirreum.Common.csproj" />
-		<ProjectReference Include="..\..\..\..\Core\Cirreum.Shared\src\Cirreum.Shared\Cirreum.Shared.csproj" />
+		<PackageReference Include="Cirreum.Domain" Version="1.1.0" />
 	</ItemGroup>
 
 </Project>
