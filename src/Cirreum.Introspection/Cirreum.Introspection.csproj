@@ -13,7 +13,7 @@
 			Kernel / Contracts / Domain triad. Domain is referenced directly; Contracts + Kernel
 			flow transitively (Domain → Contracts → Kernel).
 		-->
-		<PackageReference Include="Cirreum.Domain" Version="1.2.0" />
+		<PackageReference Include="Cirreum.Domain" Version="1.2.1" />
 	</ItemGroup>
 
 </Project>
