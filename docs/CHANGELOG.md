@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `GrantedOperationAnalyzer` no longer reports self-scoped operations in the "granted operations without `[RequiresGrant]`" **Warning** (check 1). Self-scoped operations enforce access via identity matching (`ExternalId == UserId`), so a missing permission gate is not an enforcement gap — check 1 previously contradicted check 7's Info-severity "permissions are optional" guidance for the identical operations, and its recommendation to add `[RequiresGrant]` would break onboarding/first-grant flows. Self-scoped operations without permissions remain reported by checks 6 and 7 at Info severity. The `MissingPermissionCount` metric follows the corrected (owner-scoped) set.
+
 ## [1.0.8] - 2026-07-04
 
 ### Updated
