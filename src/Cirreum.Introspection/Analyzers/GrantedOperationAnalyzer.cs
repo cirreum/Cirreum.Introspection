@@ -30,8 +30,14 @@ public class GrantedOperationAnalyzer(IDomainModel domainModel) : IDomainAnalyze
 		// ──────────────────────────────────────────────
 		// 1. Granted operations without [RequiresGrant]
 		// ──────────────────────────────────────────────
+		//
+		// Self-scoped operations are excluded: they enforce access via identity
+		// matching (ExternalId == UserId), so a missing permission gate is not an
+		// enforcement gap. Check 7 reports the same set at Info severity with
+		// "permissions are optional" semantics.
 
 		var missingPermissions = grantedOperations
+			.Where(r => !r.IsSelfScoped)
 			.Where(r => r.Permissions.Count == 0)
 			.ToList();
 
