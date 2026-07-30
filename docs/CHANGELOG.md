@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- `AuthorizableOperationAnalyzer` no longer raises the **Error** "operation(s) implement `IAuthorizableOperationBase` but have no authorizer defined" for grant- and self-scoped operations (any `IGrantable*` implementor, e.g. `ISelfLookupOperation<User>`). Those operations are authorized by the grant pipeline's Phase 1 — owner-scope grant resolution or self identity matching (`ExternalId == UserId`) — not by an `IAuthorizer<T>`, so their absence of an authorizer is by design, not an enforcement gap. The check now excludes `IsGranted` operations (`AnalyzeUnprotectedOperations`). Previously a correctly-designed grants-only/self domain failed `ValidateAuthorizationConfiguration` at startup, even though `GrantedOperationAnalyzer` (check 3) reported the identical operations at **Info** with "if grants-only authorization is intentional, this can be safely ignored" — a direct contradiction, the same class of cross-analyzer conflict resolved for the sibling analyzer in 1.0.11. Grant- and self-scoped operations without an operation authorizer remain reported by `GrantedOperationAnalyzer` at Info severity. Plain `IAuthorizableOperation<T>` types with no authorizer and no grant participation are still flagged as Errors.
+
 ## [1.0.17] - 2026-07-27
 
 ### Updated

@@ -95,7 +95,14 @@ public class AuthorizableOperationAnalyzer(IDomainModel domainModel) : IDomainAn
 			return;
 		}
 
-		var operations = unprotectedOperations.Where(r => r.RequiresAuthorization).ToList();
+		// Granted and self-scoped operations (IGrantable* implementors) are authorized by the
+		// grant pipeline's Phase 1 — owner-scope grant resolution or self identity matching
+		// (ExternalId == UserId) — not by an IAuthorizer<T>. Their absence of an authorizer is
+		// by design, so they must not be reported here as "will fail authorization". The
+		// GrantedOperationAnalyzer covers them with grant-aware semantics (at Info severity).
+		// Excluding them prevents a false-positive Error that would otherwise fail startup for a
+		// correctly-designed grants-only/self domain.
+		var operations = unprotectedOperations.Where(r => r.RequiresAuthorization && !r.IsGranted).ToList();
 		var nonOperations = unprotectedOperations.Where(r => !r.RequiresAuthorization).ToList();
 
 		if (operations.Count > 0) {
