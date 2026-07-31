@@ -279,10 +279,10 @@ public sealed class DomainModel : IDomainModel {
 	}
 
 	private static ReadOnlyCollection<PolicyRuleTypeInfo> BuildPolicyRules(IServiceProvider services) {
-		var policyValidators = services.GetServices<IPolicyValidator>().ToList();
-		var policyRules = new List<PolicyRuleTypeInfo>(policyValidators.Count);
+		var policyAuthorizers = services.GetServices<IPolicyAuthorizer>().ToList();
+		var policyRules = new List<PolicyRuleTypeInfo>(policyAuthorizers.Count);
 
-		foreach (var policy in policyValidators) {
+		foreach (var policy in policyAuthorizers) {
 			policyRules.Add(new PolicyRuleTypeInfo(
 				PolicyName: policy.PolicyName,
 				PolicyType: policy.GetType(),
@@ -347,26 +347,26 @@ public sealed class DomainModel : IDomainModel {
 		return validatorInterface?.GetGenericArguments()[0];
 	}
 
-	private static bool IsAttributeBasedPolicy(IPolicyValidator policy) {
+	private static bool IsAttributeBasedPolicy(IPolicyAuthorizer policy) {
 		var baseType = policy.GetType().BaseType;
 		return baseType != null &&
 			   baseType.IsGenericType &&
-			   baseType.GetGenericTypeDefinition() == typeof(AttributeValidatorBase<>);
+			   baseType.GetGenericTypeDefinition() == typeof(AttributePolicyAuthorizerBase<>);
 	}
 
-	private static Type? GetTargetAttributeType(IPolicyValidator policy) {
+	private static Type? GetTargetAttributeType(IPolicyAuthorizer policy) {
 		if (!IsAttributeBasedPolicy(policy)) {
 			return null;
 		}
 		return policy.GetType().BaseType?.GetGenericArguments()[0];
 	}
 
-	private static string GetPolicyDescription(IPolicyValidator policy) {
+	private static string GetPolicyDescription(IPolicyAuthorizer policy) {
 		var type = policy.GetType();
 		var description = type.GetCustomAttributes(typeof(System.ComponentModel.DescriptionAttribute), false)
 			.Cast<System.ComponentModel.DescriptionAttribute>()
 			.FirstOrDefault()?.Description;
-		return description ?? $"Policy validator: {policy.PolicyName}";
+		return description ?? $"Policy authorizer: {policy.PolicyName}";
 	}
 
 	private static List<AuthorizationRuleTypeInfo> ExtractValidationRules(Type operationType, Type validatorType) {

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.19] - 2026-07-30
+
+### Fixed
+
+- Adopted `Cirreum.Domain` 3.0.0's Stage 3 renames in the domain model: policy rules are read
+  from `IPolicyAuthorizer` (was `IPolicyValidator`) and attribute-based policies are detected via
+  `AttributePolicyAuthorizerBase<>` (was `AttributeValidatorBase<>`). Model shape
+  (`PolicyRuleTypeInfo`) is unchanged; policy descriptions now read "Policy authorizer: …".
+
+### Updated
+
+- Re-pinned `Cirreum.Domain` `2.0.0` → `3.0.0` (restores operation-authorization enforcement;
+  carries the `IPolicyAuthorizer` rename).
+
 ## [1.0.18] - 2026-07-30
 
 ### Fixed
